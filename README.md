@@ -49,17 +49,33 @@ motor-health-edge-ai/
 └── .github/workflows/ # CI/CD
 
 
+## Current Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 1 — Hardware bring-up | 🟡 In progress | Steps 1–3 done (serial, voltage, current). Steps 4–6 pending (MPU6050, IR, full capture). |
+| Phase 2 — Preprocessing | ⚪ Not started | |
+| Phase 3 — Training | ⚪ Not started | |
+| Phase 4 — Quantization | ⚪ Not started | |
+| Phase 5 — Deployment | ⚪ Not started | |
+
 ## Phase 1: Data Collection
 
 ### 1. Flash Firmware
 
-Open `src/inference/main/main.cpp` (or `firmware/motor_logger/motor_logger.ino` if using Arduino IDE) and flash to the ESP32-C3.
+Open `src/inference/src/main.cpp` (or `firmware/motor_logger/motor_logger.ino` if using Arduino IDE) and flash to the ESP32-C3.
 
-Dependencies: `Adafruit MPU6050`, `Adafruit Unified Sensor`.
+Dependencies: `Adafruit MPU6050`, `Adafruit Unified Sensor`, `Adafruit INA228`.
 
-### 2. Calibrate ACS712 Zero Point
+### 2. Verify INA228 (no calibration needed)
 
-With the motor stopped, open Serial Monitor (115200 baud). Note the `current_a` value. Adjust `ACS712_ZERO_V` in the firmware until it reads near `0.000`.
+The INA228 is factory-calibrated — no manual zero adjustment required.
+With the motor off, open Serial Monitor (115200 baud). Expected:
+  • `current_mA` ≈ 0 (within ±1 mA)
+  • `bus_voltage_V` ≈ supply voltage ± 0.02 V
+
+The ~-0.36 mA baseline is normal (INA228 unipolar offset, subtracted
+in Phase 2 preprocessing).
 
 ### 3. Log Data
 
