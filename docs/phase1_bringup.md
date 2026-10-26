@@ -5,75 +5,44 @@
 - Observed: CSV header + 1 Hz rows, RPM counter incremented cleanly.
 - Note: ESP32-C3 SuperMini requires `-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1`.
 
-## Step 2 — Voltage divider — PASS (calibrated)
+## Step 2 — Voltage divider — PASS (calibrated) [SUPERSEDED in Step 3]
 
-### Hardware
-- R1 = 100 kΩ (top, to supply), R2 = 20 kΩ (bottom, to GND)
-- DIV_FACTOR = (R1 + R2) / R2 = 6.000
-- Divider from motor supply rail to GND, midpoint → GPIO3
+> **Note:** This section documents the divider's bring-up and calibration
+> as it was used in Phase 1 Step 2. In Step 3, the INA228 replaced both
+> the ACS712 and the divider. The divider hardware has been removed.
+> This section is retained for historical record and as evidence of
+> the original validation methodology.
 
-### Divider sanity checks (DMM)
-| Supply (DMM) | Expected midpoint | Measured midpoint (DMM) | Verdict |
-|---|---|---|---|
-| 6.00 V | 1.000 V | ~1.00 V | ✅ |
-| 9.00 V | 1.500 V | ~1.50 V | ✅ |
+### Original hardware (now removed)
+- R1 = 100 kΩ, R2 = 20 kΩ → DIV_FACTOR = 6.000
+- Divider from L298N +12V to GND, midpoint → GPIO3
 
-Divider is correctly wired and behaving linearly with respect to
-supply voltage, as expected from ideal resistor divider theory.
+### Original calibration methodology
+[rest of Step 2 content as written]
 
-### ADC calibration
-ESP32-C3 ADC reference tolerance required empirical calibration.
+### Why the divider was removed
+The INA228 measures both current (internal shunt) and voltage (VBUS pin)
+over I2C, with ±0.05% accuracy and zero ADC-pin dependency. Keeping the
+divider would:
+- Waste GPIO3 (a scarce resource on the C3)
+- Add analog noise on a signal we no longer need
+- Clutter the physical wiring
 
-**Pre-calibration observations:**
-- At 6.00 V supply: firmware reported 6.45 V → +7.4% error
-- At 9.00 V supply: firmware reported 9.89 V → +9.9% error
-- Root cause: ESP32-C3 internal ADC reference tolerance (5–10% documented)
+The divider is stored and may be re-used if a second voltage channel
+(e.g., motor terminal voltage after the L298N's drop) is ever needed.
 
-**Calibration chosen:** single-point at operating voltage (6 V), where
-the model will actually be used.
-- `ADC_CAL_FACTOR = 0.9307` (= DMM 6.00 V ÷ firmware pre-cal 6.45 V)
+## Reusable engineering knowledge (from Step 2)
 
-**Post-calibration validation:**
-| Supply (DMM) | Firmware avg | Delta | Error % |
-|---|---|---|---|
-| 6.00 V | 6.06 V | +0.06 V | 1.0% |
-| 9.00 V | 9.20 V | +0.20 V | 2.3% |
+ESP32-C3 ADC does not have a precise 3.3 V reference. Empirical measurements
+on this specific board showed +7.4% error at 6 V and +9.9% at 9 V (before
+calibration). This is documented in the ESP32-C3 datasheet as 5–10%
+tolerance and varies chip-to-chip.
 
-**Linearity assessment:** ±2.3% across 3 V span (6–9 V). The residual
-error at 9 V is due to ESP32-C3 ADC range-boundary nonlinearity (different
-internal reference paths activated above ~1.4 V at pin). This is documented
-silicon behavior, not a wiring fault.
-
-**Acceptability for model:** The voltage channel is a sanity/monitoring
-feature, not a fault signature. The signal of interest (motor-on supply
-sag, expected >0.2 V) is well above the 0.02 V noise floor after per-window
-standardization. ±2.3% linearity error is well within tolerance.
-
-### Noise characteristics (expected, not a fault)
-- Jitter at 9 V supply: ±0.155 V (±1.7%) over 103 samples
-- Jitter at 6 V supply: ±0.13 V (±2.1%) over 48 samples
-- Sources: ESP32-C3 ADC LSB noise, breadboard contact resistance, supply ripple
-- Impact on model: negligible after per-window standardization
-
-### Intermittent floating-pin glitches — hardware issue documented
-Three rows during 9 V test showed raw ≈ 40–79 instead of ~2000
-(characteristic floating-pin signature: near-zero with random spikes).
-Diagnosed as loose breadboard jumper between divider midpoint and GPIO3.
-Reseating the jumper resolved it.
-
-**Recommended fixes for future hardware iteration:**
-1. Add 0.1 µF ceramic capacitor from GPIO3 to GND — hardware LPF at ~16 Hz,
-   prevents floating-pin glitches if jumper momentarily disconnects
-2. Migrate breadboard → PCB — eliminates contact-resistance drift entirely
-3. Consider ESP32-C3 ADC continuous conversion mode for cleaner averaged readings
-
-### Decision log
-- **Chosen factor: 0.9307** (single-point, 6 V)
-- **Rejected: 0.920** (two-point average) — optimizing at 6 V operating point
-  is correct for this use case; 9 V validation was linearity check, not
-  calibration target
-- **Rejected: piecewise calibration** — both points within 2.3%, insufficient
-  gain for added complexity
+**Implication for future designs:** any analog sensor on the C3 requires
+either (a) per-board empirical calibration, or (b) a digital sensor like
+the INA228 that does its own ADC internally with factory calibration.
+For this project, we chose (b) for current/voltage, and there are no
+remaining analog channels to calibrate.
   
   ## Step 3 — INA228 current + voltage sensor — PASS
 
