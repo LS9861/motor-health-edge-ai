@@ -1,47 +1,66 @@
+// src/inference/src/main.cpp
+//
+// Phase 1 · Step 4 — MPU6500 (MPU6050 clone) vibration sensor
+//
+// Hardware: GY-521 module with MPU6500 chip (WHO_AM_I = 0x70, not 0x68).
+// Adafruit MPU6050 library rejects clones; FastIMU handles them.
+//
+// Units: FastIMU returns acceleration in g. Firmware converts to m/s²
+// so CSV column names match configs/sensors.yaml (unit: m_s2).
+//
+// Shared I2C bus with INA228 (0x40), SDA=GPIO0, SCL=GPIO1.
+
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_INA228.h>
+#include "FastIMU.h"
 
-Adafruit_INA228 ina228;
+calData calib = {0};
+MPU6500 imu;
 
-// *** CRITICAL: Your Adafruit board has a 15 mΩ built-in shunt ***
-const float SHUNT_RESISTANCE = 0.015; // 15 mΩ
-const float MAX_CURRENT = 3.0;        // 3A is plenty for your TT motor
+uint32_t lastMs = 0;
 
 void setup()
 {
     Serial.begin(115200);
     delay(1500);
 
-    Wire.begin(0, 1); // SDA=0, SCL=1 (shared with MPU6050)
+    Wire.begin(0, 1);
+    Wire.setClock(400000);
 
-    if (!ina228.begin())
+    int err = imu.init(calib, 0x68);
+    if (err != 0)
     {
-        Serial.println("ERROR: INA228 not found. Check I2C wiring (addr 0x40).");
-        while (1)
-            delay(10);
+        Serial.print("IMU init error: ");
+        Serial.println(err);
+        while (true)
+            delay(1000);
     }
-    Serial.println("INA228 found.");
+    Serial.println("MPU6500 initialized (FastIMU).");
 
-    // Configure for the on-board 15mΩ shunt
-    ina228.setShunt(SHUNT_RESISTANCE, MAX_CURRENT);
-    ina228.setAveragingCount(INA228_COUNT_16);
+    // ±8 g range — matches configs/sensors.yaml
+    imu.setAccelRange(8);
 
-    Serial.println("timestamp_ms,current_mA,bus_voltage_V");
+    lastMs = millis();
+    Serial.println("timestamp_ms,ax,ay,az");
 }
 
 void loop()
 {
     uint32_t now = millis();
+    if (now - lastMs < 20)
+        return; // 50 Hz
+    lastMs = now;
 
-    float current_mA = ina228.getCurrent_mA();
-    float bus_V = ina228.getBusVoltage_V();
+    imu.update();
+    AccelData accel;
+    imu.getAccel(&accel);
 
+    // Convert g → m/s² to match sensors.yaml declaration
     Serial.print(now);
     Serial.print(',');
-    Serial.print(current_mA, 2);
+    Serial.print(accel.accelX * 9.81f, 3);
     Serial.print(',');
-    Serial.println(bus_V, 3);
-
-    delay(1000);
+    Serial.print(accel.accelY * 9.81f, 3);
+    Serial.print(',');
+    Serial.println(accel.accelZ * 9.81f, 3);
 }

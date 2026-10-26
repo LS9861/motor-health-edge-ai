@@ -96,3 +96,44 @@ range 150–500 mA at no-load, 1–2 A under load.
 - Or, alternatively, compute per-window mean and subtract (removes baseline
   and slow drift simultaneously). This is the preferred approach for
   standardization.
+  
+  
+  ## Step 4 — MPU6500 (MPU6050 clone) — PASS
+
+### Sensor identification
+- I2C scanner: device at 0x68 ✅
+- WHO_AM_I register (0x75): **0x70**, not 0x68
+- Conclusion: module is MPU6500 clone, common in cheap GY-521 boards
+
+### Library decision
+- Adafruit MPU6050 library rejects WHO_AM_I ≠ 0x68 during init
+  → swapped to FastIMU library (explicitly supports MPU6500)
+- Configuration: MPU6500 class, address 0x68, ±8 g range, 50 Hz sample rate
+
+### Unit handling
+- FastIMU returns acceleration in g units (not m/s²)
+- Firmware multiplies by 9.81 before printing → CSV matches
+  configs/sensors.yaml (unit: m_s2)
+- Verified: flat board reads az ≈ 9.8 m/s² (≈ 1.0 g) ✅
+
+### Validation
+| Test | Expected | Observed |
+|---|---|---|
+| Boot init | no error | ✅ |
+| Flat board, Z axis | ~9.8 m/s² | ~9.9 m/s² |
+| Tilt 90° | gravity redistributes smoothly | ✅ |
+| Tap | brief spike, settles <200 ms | ✅ |
+
+### Notes for Phase 2
+- MPU6500 has the same accel/mag/gyro register map as MPU6050 for
+  the axes we use
+- ±8 g range gives ±0.244 mg/LSB resolution — sufficient for vibration
+  fault signatures expected in imbalance/friction classes
+- FastIMU's `update()` must be called before `getAccel()` — noted
+
+
+  ### Power Budget & Risk Mitigation
+- ESP32-C3 SuperMini 3.3V LDO has a practical thermal limit of ~150-250mA.
+- Current sensor load (MPU6050 ~4mA, INA228 ~1mA, IR ~10mA) is within limits.
+- **Risk:** Motor noise or future sensor additions could exceed LDO capacity, causing I2C bus failures.
+- **Mitigation (for final capture):** Consider a dedicated 3.3V buck converter (e.g., MP1584) fed from the 9V rail to power all sensors, keeping the ESP32 LDO for the MCU only.
