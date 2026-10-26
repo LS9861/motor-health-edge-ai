@@ -137,3 +137,51 @@ range 150–500 mA at no-load, 1–2 A under load.
 - Current sensor load (MPU6050 ~4mA, INA228 ~1mA, IR ~10mA) is within limits.
 - **Risk:** Motor noise or future sensor additions could exceed LDO capacity, causing I2C bus failures.
 - **Mitigation (for final capture):** Consider a dedicated 3.3V buck converter (e.g., MP1584) fed from the 9V rail to power all sensors, keeping the ESP32 LDO for the MCU only.
+
+## Step 5 — IR speed sensor — PASS
+
+### Hardware
+- LM393 optical sensor + circular disk with 20 holes
+- DO → GPIO10, RISING edge, 1 ms software debounce
+- VCC=3.3V
+
+### Validation (motor-driven, 9V through INA228 → L298N)
+- 30-second continuous run
+- pulses/sec: ~175 (stable ±2)
+- rpm: ~525 (stable ±3)
+- jitter: ±0.4% — comparable to commercial tachometers
+- total count grew monotonically with zero glitches
+
+### Key finding: hand-rotation was misleading
+- Hand rotation: bursts of 5-200 pulses/rev (chatter artifact)
+- Motor-driven: clean 20 pulses/rev
+- Root cause of hand noise: mechanical wobble, not electrical
+- Design principle established: validate sensors under operating
+  conditions, not by hand
+
+### Anomaly to resolve
+- Expected RPM at 7.6V (9V - L298N 1.4V drop): ~255 RPM
+- Observed: ~525 RPM (2.06× expected)
+- Candidate causes:
+    (a) Different gear ratio (e.g., 1:24 instead of 1:48)
+    (b) Higher-voltage motor spec than cheap TT
+- Resolution: not required for fault classification (relative stability
+  matters, not absolute accuracy). Document actual motor as observed.
+
+---
+
+## Status summary
+
+| Step | Sensor | Status |
+|---|---|---|
+| 1 | USB-CDC | PASS |
+| 2 | Voltage divider | SUPERSEDED by INA228 |
+| 3 | INA228 | PASS |
+| 4 | MPU6500 | PASS |
+| 5 | IR encoder | PASS |
+| 6 | Full combined capture | IN PROGRESS |
+
+### Next: Step 6
+Log all 5 channels at 50 Hz simultaneously. Then run the 3-class data
+collection protocol (healthy / imbalanced / friction), 3-5 runs per class,
+30-60s each.
