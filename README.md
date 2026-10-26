@@ -8,14 +8,13 @@ This project collects vibration, current, voltage, and speed signals from a TT D
 
 **Target classifications:** healthy, imbalanced, friction/wear.
 
-## Hardware
+### Hardware
 
 | Component | Role |
 |-----------|------|
 | ESP32-C3 SuperMini | MCU with Wi-Fi/BLE, 4MB flash |
 | MPU6050 | 3-axis accelerometer (vibration) |
-| ACS712 | Motor current sensing |
-| Resistor divider | Motor supply voltage sensing |
+| INA228 | Current + voltage (20-bit, I2C) |
 | IR reflective sensor | Motor speed (RPM) |
 | TT DC gear motor | Target motor |
 | L298N | Motor driver |
@@ -23,12 +22,15 @@ This project collects vibration, current, voltage, and speed signals from a TT D
 ### Wiring Summary
 
 - **MPU6050:** SDA → GPIO0, SCL → GPIO1, VCC → 3.3V
-- **ACS712:** OUT → GPIO2, VCC → 3.3V (or use a divider if 5V)
-- **Voltage divider:** midpoint → GPIO3
+- **INA228:** SDA → GPIO0, SCL → GPIO1, VIN → 3.3V,
+  VIN+ → supply+, VIN- → L298N +12V, VBUS → supply+ (jumper closed)
 - **IR sensor:** OUT → GPIO10
 - **L298N:** IN1 → GPIO4, IN2 → GPIO5, ENA jumper ON, common GND
 
-> ⚠️ ESP32-C3 GPIOs are 3.3V only. Never connect 5V sensor outputs directly.
+> ⚠️ ESP32-C3 GPIOs are 3.3 V only. Never connect 5V sensor outputs directly.
+
+> ℹ️ The INA228 replaced an earlier ACS712 + resistor-divider design.
+> See `docs/phase1_bringup.md` Step 2 (SUPERSEDED) for the rationale.
 
 ## Repository Structure
 motor-health-edge-ai/

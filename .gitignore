@@ -1,50 +1,27 @@
-# ---------- Data ----------
+# --- Phase 1 data ---
 data/raw/*
 !data/raw/.gitkeep
 !data/raw/sample_*.csv
-
 data/processed/*
 !data/processed/.gitkeep
-!data/processed/sample_*.npy
-
 data/synthetic/*
 !data/synthetic/.gitkeep
-
 data/metadata/*
 !data/metadata/.gitkeep
 
-# ---------- Models ----------
-models/checkpoints/*
-models/onnx/*
-models/tflite/*
-models/tflm_headers/*
-!models/**/.gitkeep
+# --- PlatformIO ---
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/.browse.c_cpp.db*
 
-# ---------- Results ----------
-results/figures/*
-results/logs/*
-!results/figures/.gitkeep
-!results/logs/.gitkeep
-results/reports/metrics.csv
-
-# ---------- Python ----------
+# --- Python ---
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 .pytest_cache/
-*.egg-info/
 
-# ---------- Firmware / PlatformIO ----------
-.pio/
-.pioenvs/
-src/inference/.vscode/
-
-# ---------- OS ----------
+# --- OS ---
 Thumbs.db
 .DS_Store
-Desktop.ini
-
-# ---------- IDE ----------
-.vscode/
-.idea/
