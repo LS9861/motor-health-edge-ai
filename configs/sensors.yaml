@@ -1,7 +1,9 @@
 # configs/sensors.yaml
 # Single source of truth for sensor configuration.
-# The ESP32 firmware (src/inference/src/main.cpp) and Python preprocessing
-# (src/training/preprocess.py, Phase 2) MUST stay consistent with this file.
+# Firmware (src/inference/src/main.cpp) and Python preprocessing must
+# stay consistent with this file.
+#
+# Last updated: Phase 1, Step 3 (INA228 integration)
 
 sampling:
   target_hz: 50                # Loop rate (delay(20) in firmware)
@@ -21,10 +23,10 @@ channels:
     source: mpu6050
   - name: current_a
     unit: A
-    source: acs712
+    source: ina228          # <-- CHANGED (was: acs712)
   - name: voltage_v
     unit: V
-    source: divider
+    source: ina228          # <-- CHANGED (was: divider)
   - name: rpm
     unit: rpm
     source: ir
@@ -38,18 +40,22 @@ mpu6050:
   accel_range_g: 8
   filter_bandwidth_hz: 21
 
-acs712:
-  # CALIBRATE ON YOUR HARDWARE — see docs/wiring.md §4.
-  supply_v: 3.3               # ACS712 VCC (3.3V recommended for ESP32-C3)
-  zero_v: 1.65                # Raw output at zero current (VCC/2)
-  sensitivity_v_per_a: 0.066  # ACS712-30A = 0.066; 20A = 0.100; 5A = 0.185
+# <-- REPLACED block: acs712 + voltage_divider → ina228
+ina228:
+  i2c_address: 0x40
+  shunt_resistance_ohm: 0.015    # Adafruit breakout PID 5832 (fixed hardware)
+  max_expected_current_a: 3.0
+  averaging_count: 16
+  zero_baseline_ma: -0.36        # measured with motor off (Step 3)
+  measurement_mode: high_side    # VBUS jumper closed
+  logic_supply_v: 3.3
 
-voltage_divider:
-  r1_ohm: 100000
-  r2_ohm: 20000
-  adc_cal_factor: 0.9307     # <-- ADD THIS LINE
+ir:
+  pulses_per_rev: 1
+  pin: 10
+  pullup: true
 
 adc:
   resolution_bits: 12
   reference_v: 3.3
-  attenuation: 11db           # ADC_11db → full 0-3.3V range
+  attenuation: 11db           # only used for any remaining analog channels

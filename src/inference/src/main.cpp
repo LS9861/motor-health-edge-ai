@@ -1,65 +1,47 @@
-// src/inference/src/main.cpp
-//
-// Phase 1 · Step 2 — Voltage divider + ESP32-C3 ADC calibration
-//
-// The ESP32-C3 ADC reference is not exactly 3.3 V — typical tolerance is
-// 5–10%. We empirically calibrate with a DMM at one known supply voltage
-// and apply ADC_CAL_FACTOR to all subsequent readings.
-//
-// Calibration procedure:
-//   1. Set supply to 6.0 V (motor disconnected).
-//   2. Read DMM at L298N +12V terminal → V_dmm.
-//   3. Read average supply_v from Monitor → V_esp (before factor = 1.0).
-//   4. Set ADC_CAL_FACTOR = V_dmm / V_esp.
-//   5. Re-upload, verify |V_dmm − supply_v| ≤ 0.05 V.
-
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_INA228.h>
 
-// Divider
-const float DIV_R1 = 100000.0f;
-const float DIV_R2 = 20000.0f;
-const float DIV_FACTOR = (DIV_R1 + DIV_R2) / DIV_R2; // = 6.000
+Adafruit_INA228 ina228;
 
-// ADC
-const int PIN_VOLTAGE = 3;
-const float ADC_VREF = 3.3f;
-const int ADC_MAX = 4095;
-
-// Calibration — updated from empirical DMM comparison on 2026-10-26.
-// DMM supply: 6.00 V, ESP32 reported avg: 6.447 V → factor = 0.9307
-const float ADC_CAL_FACTOR = 0.9307f;
-
-uint32_t lastMs = 0;
+// *** CRITICAL: Your Adafruit board has a 15 mΩ built-in shunt ***
+const float SHUNT_RESISTANCE = 0.015; // 15 mΩ
+const float MAX_CURRENT = 3.0;        // 3A is plenty for your TT motor
 
 void setup()
 {
     Serial.begin(115200);
     delay(1500);
 
-    analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
+    Wire.begin(0, 1); // SDA=0, SCL=1 (shared with MPU6050)
 
-    lastMs = millis();
-    Serial.println("timestamp_ms,raw,volts_at_pin,supply_v");
-    Serial.println("# boot ok — step 2 voltage divider + ADC calibration");
+    if (!ina228.begin())
+    {
+        Serial.println("ERROR: INA228 not found. Check I2C wiring (addr 0x40).");
+        while (1)
+            delay(10);
+    }
+    Serial.println("INA228 found.");
+
+    // Configure for the on-board 15mΩ shunt
+    ina228.setShunt(SHUNT_RESISTANCE, MAX_CURRENT);
+    ina228.setAveragingCount(INA228_COUNT_16);
+
+    Serial.println("timestamp_ms,current_mA,bus_voltage_V");
 }
 
 void loop()
 {
     uint32_t now = millis();
-    if (now - lastMs < 1000)
-        return;
-    lastMs = now;
 
-    int raw = analogRead(PIN_VOLTAGE);
-    float volts = (raw / (float)ADC_MAX) * ADC_VREF;
-    float supply = volts * DIV_FACTOR * ADC_CAL_FACTOR;
+    float current_mA = ina228.getCurrent_mA();
+    float bus_V = ina228.getBusVoltage_V();
 
     Serial.print(now);
     Serial.print(',');
-    Serial.print(raw);
+    Serial.print(current_mA, 2);
     Serial.print(',');
-    Serial.print(volts, 3);
-    Serial.print(',');
-    Serial.println(supply, 3);
+    Serial.println(bus_V, 3);
+
+    delay(1000);
 }
