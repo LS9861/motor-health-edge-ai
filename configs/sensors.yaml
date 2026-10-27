@@ -1,17 +1,27 @@
 # configs/sensors.yaml
 # Single source of truth for sensor configuration.
-# Firmware (src/inference/src/main.cpp) and Python preprocessing must
-# stay consistent with this file.
-#
-# Last updated: Phase 1, Step 3 (INA228 integration)
+# Firmware and Python preprocessing must stay consistent with this file.
 
 sampling:
-  target_hz: 50                # Loop rate (delay(20) in firmware)
-  window_samples: 500          # 10 s @ 50 Hz (used in Phase 2)
-  rpm_window_ms: 1000          # RPM computed over 1 s
+  target_hz: 50
+  window_samples: 100
+  step_samples: 50
+  rpm_window_ms: 1000
+
+# Feature selection lives here so we can edit YAML instead of code.
+# RPM is intentionally NOT in time_series (see docs/phase1_bringup.md).
+# It will return in Phase 4 as scalar `mean_rpm` and Phase 5 as 50Hz time series.
+features:
+  time_series:
+    - ax
+    - ay
+    - az
+    - current_mA
+    - voltage_v
+  # scalar_features:            # Phase 4 — will add mean_rpm
+  #   - mean_rpm
 
 channels:
-  # Order is CRITICAL. Model expects inputs in this order.
   - name: ax
     unit: m_s2
     source: mpu6050
@@ -21,41 +31,27 @@ channels:
   - name: az
     unit: m_s2
     source: mpu6050
-  - name: current_a
-    unit: A
-    source: ina228          # <-- CHANGED (was: acs712)
+  - name: current_mA
+    unit: mA
+    source: ina228
   - name: voltage_v
     unit: V
-    source: ina228          # <-- CHANGED (was: divider)
+    source: ina228
   - name: rpm
     unit: rpm
     source: ir
+    note: "1 Hz in firmware; dropped from Phase 3 features."
 
 labels:
   - healthy
   - imbalanced
   - friction
 
-mpu6050:
+mpu6500:
   accel_range_g: 8
   filter_bandwidth_hz: 21
 
-# <-- REPLACED block: acs712 + voltage_divider → ina228
 ina228:
   i2c_address: 0x40
-  shunt_resistance_ohm: 0.015    # Adafruit breakout PID 5832 (fixed hardware)
-  max_expected_current_a: 3.0
-  averaging_count: 16
-  zero_baseline_ma: -0.36        # measured with motor off (Step 3)
-  measurement_mode: high_side    # VBUS jumper closed
-  logic_supply_v: 3.3
-
-ir:
-  pulses_per_rev: 1
-  pin: 10
-  pullup: true
-
-adc:
-  resolution_bits: 12
-  reference_v: 3.3
-  attenuation: 11db           # only used for any remaining analog channels
+  shunt_ohm: 0.015
+  max_current_a: 3.0

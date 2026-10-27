@@ -1,187 +1,211 @@
-# Phase 1 Bring-up Log
+# Phase 1 — Hardware Bring-up Log
+
+Project: motor-health-edge-ai
+Hardware: ESP32-C3 SuperMini, MPU6500 (GY-521), INA228, LM393 + 20-hole disk, TT DC gearmotor, L298N
+Supply: 6.0 V, bench PSU current-limited to 1.5 A
+
+---
 
 ## Step 1 — Serial / USB-CDC — PASS
-- Firmware: `src/inference/src/main.cpp`
-- Observed: CSV header + 1 Hz rows, RPM counter incremented cleanly.
-- Note: ESP32-C3 SuperMini requires `-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1`.
 
-## Step 2 — Voltage divider — PASS (calibrated) [SUPERSEDED in Step 3]
+- Firmware flashed via PlatformIO to ESP32-C3 SuperMini.
+- CSV header + 1 Hz rows observed in Serial Monitor.
+- Required build flags: `-DARDUINO_USB_MODE=1`, `-DARDUINO_USB_CDC_ON_BOOT=1`
+  (without these, Serial goes to a nonexistent UART and Monitor stays silent).
 
-> **Note:** This section documents the divider's bring-up and calibration
-> as it was used in Phase 1 Step 2. In Step 3, the INA228 replaced both
-> the ACS712 and the divider. The divider hardware has been removed.
-> This section is retained for historical record and as evidence of
-> the original validation methodology.
+---
 
-### Original hardware (now removed)
-- R1 = 100 kΩ, R2 = 20 kΩ → DIV_FACTOR = 6.000
-- Divider from L298N +12V to GND, midpoint → GPIO3
+## Step 2 — Voltage divider — SUPERSEDED
 
-### Original calibration methodology
-[rest of Step 2 content as written]
+- Original design: R1 = 100 kΩ, R2 = 20 kΩ on the motor supply, midpoint → GPIO3.
+- ESP32-C3 ADC reference tolerance required empirical calibration
+  (`ADC_CAL_FACTOR = 0.9307` at 6 V; ~2.3 % linearity error at 9 V).
+- **Superseded in Step 3**: INA228 provides bus-voltage measurement digitally,
+  eliminating the ADC and its calibration entirely.
+- The divider was removed from the final firmware.
 
-### Why the divider was removed
-The INA228 measures both current (internal shunt) and voltage (VBUS pin)
-over I2C, with ±0.05% accuracy and zero ADC-pin dependency. Keeping the
-divider would:
-- Waste GPIO3 (a scarce resource on the C3)
-- Add analog noise on a signal we no longer need
-- Clutter the physical wiring
+---
 
-The divider is stored and may be re-used if a second voltage channel
-(e.g., motor terminal voltage after the L298N's drop) is ever needed.
-
-## Reusable engineering knowledge (from Step 2)
-
-ESP32-C3 ADC does not have a precise 3.3 V reference. Empirical measurements
-on this specific board showed +7.4% error at 6 V and +9.9% at 9 V (before
-calibration). This is documented in the ESP32-C3 datasheet as 5–10%
-tolerance and varies chip-to-chip.
-
-**Implication for future designs:** any analog sensor on the C3 requires
-either (a) per-board empirical calibration, or (b) a digital sensor like
-the INA228 that does its own ADC internally with factory calibration.
-For this project, we chose (b) for current/voltage, and there are no
-remaining analog channels to calibrate.
-  
-  ## Step 3 — INA228 current + voltage sensor — PASS
+## Step 3 — INA228 current + voltage — PASS
 
 ### Hardware
-- Adafruit INA228 breakout (PID 5832), 20-bit ADC, 15 mΩ internal shunt
-- I2C address 0x40, shares bus with MPU6050 (SDA=GPIO0, SCL=GPIO1)
-- Logic supply `VIN` from ESP32 3.3V (NOT 5V)
-- High-side measurement: supply (+) → `VIN+` → shunt → `VIN-` → L298N +12V
-- `VBUS` tied to `VIN+` for bus voltage sensing
+- Adafruit INA228 (PID 5832), 20-bit Δ-Σ, on-board 15 mΩ shunt
+- I2C address 0x40 (shares bus with MPU6500)
+- Logic supply `VIN` from ESP32 3.3 V (not 5 V)
+- High-side measurement: supply (+) → `VIN+` → shunt → `VIN-` → L298N `+12V`
+- `VBUS` tied to `VIN+` (jumper closed) for bus-voltage sensing
 
-### Sensor selection rationale (design decision)
-Switched from ACS712-05B to INA228 for the following reasons:
+### Design decision — ACS712 → INA228
+The original plan used an ACS712-05B. Problem discovered during bring-up:
+the ACS712's quiescent output is VCC/2 (2.5 V at 5 V supply, 1.65 V at
+3.3 V). When powered from 5 V, the output exceeds the ESP32-C3's reliable
+ADC range, producing saturated readings (~16428). Working around it with
+a voltage divider would add error.
 
-| Aspect | ACS712-05B | INA228 (chosen) |
-|---|---|---|
-| Output | Analog (VCC/2 ± swing) | Digital I2C |
-| ESP32-C3 ADC compatibility | 5V output saturates 3.3V ADC | No ADC pin needed |
-| Resolution | ~12-bit via ESP32 ADC | 20-bit onboard Δ-Σ |
-| Accuracy | ±1.5% typical | ±0.05% gain, ±1µV offset |
-| Calibration | Manual zero + sensitivity | Digital calibration registers |
-
-Root cause of switch: ACS712 5V-powered output (2.5V quiescent) exceeded
-the ESP32-C3's reliable ADC range, producing saturated readings (~16428).
-INA228 eliminates the ADC entirely — measurement is done digitally.
-
-### Configuration
-- Shunt resistance: 0.015 Ω (on-board, do not change in code)
-- Max current: 3.0 A
-- Averaging: 16 samples
+**Chosen solution**: switch to the INA228, which reports current and
+voltage digitally over I2C. ADC constraints disappear; resolution is
+20-bit; accuracy is ±0.05 % gain.
 
 ### Zero-current baseline (motor OFF, L298N inputs LOW)
 - Firmware average: **−0.36 mA**
 - Jitter: ±0.04 mA (1σ)
-- Interpretation: within 2 LSB of true zero. The negative sign indicates
-  L298N is fully off (no quiescent draw) and reflects INA228's small
-  unipolar offset. This baseline will be subtracted in Python preprocessing
-  (Phase 2), not in firmware — keeps raw data honest.
+- Within 2 LSB of true zero. Baseline subtracted in Phase 2 preprocessing.
 
 ### Bus voltage validation
-- Firmware: **9.013 V** (stable to ±0.001 V)
-- DMM on supply: ~9.0 V
-- Delta: <0.02 V (0.2%) — within INA228's ±0.05% spec
+- Firmware: **9.013 V** (stable to ±0.001 V) at 9 V supply
+- DMM: ~9.0 V → delta <0.02 V
 
-### Motor-on test (to be completed in Step 6)
-Motor was not yet enabled during this test. Sensitivity verification will
-be performed during full-system capture (Step 6) with expected current
-range 150–500 mA at no-load, 1–2 A under load.
+---
 
-### Notes for Phase 2 preprocessing
-- Subtract zero baseline: `current_corrected = current_mA − (−0.36)`
-- Or, alternatively, compute per-window mean and subtract (removes baseline
-  and slow drift simultaneously). This is the preferred approach for
-  standardization.
-  
-  
-  ## Step 4 — MPU6500 (MPU6050 clone) — PASS
+## Step 4 — MPU6050 / MPU6500 vibration — PASS
 
 ### Sensor identification
-- I2C scanner: device at 0x68 ✅
-- WHO_AM_I register (0x75): **0x70**, not 0x68
-- Conclusion: module is MPU6500 clone, common in cheap GY-521 boards
+- I2C scanner: device responds at 0x68 ✅
+- `WHO_AM_I` register (0x75) returned **0x70** → MPU6500 clone
+  (common in cheap GY-521 boards)
+- Adafruit MPU6050 library rejects clones; **switched to FastIMU**, which
+  explicitly supports MPU6500.
 
-### Library decision
-- Adafruit MPU6050 library rejects WHO_AM_I ≠ 0x68 during init
-  → swapped to FastIMU library (explicitly supports MPU6500)
-- Configuration: MPU6500 class, address 0x68, ±8 g range, 50 Hz sample rate
-
-### Unit handling
-- FastIMU returns acceleration in g units (not m/s²)
-- Firmware multiplies by 9.81 before printing → CSV matches
-  configs/sensors.yaml (unit: m_s2)
-- Verified: flat board reads az ≈ 9.8 m/s² (≈ 1.0 g) ✅
+### Configuration
+- MPU6500 via FastIMU, ±8 g range, 21 Hz LPF, 50 Hz sample rate
+- Units: FastIMU returns g; firmware multiplies by 9.81 → m/s²
 
 ### Validation
 | Test | Expected | Observed |
 |---|---|---|
-| Boot init | no error | ✅ |
-| Flat board, Z axis | ~9.8 m/s² | ~9.9 m/s² |
-| Tilt 90° | gravity redistributes smoothly | ✅ |
-| Tap | brief spike, settles <200 ms | ✅ |
+| Boot init | no error | OK |
+| Flat board, Z axis | ~9.81 m/s² | az ≈ 9.93 |
+| Magnitude √(ax²+ay²+az²) | 9.4–10.2 | 10.37 (5 % over, in spec) |
+| Tilt response | smooth redistribution | ✅ |
+| Jitter (static) | <0.1 m/s² | ~0.03 |
 
-### Notes for Phase 2
-- MPU6500 has the same accel/mag/gyro register map as MPU6050 for
-  the axes we use
-- ±8 g range gives ±0.244 mg/LSB resolution — sufficient for vibration
-  fault signatures expected in imbalance/friction classes
-- FastIMU's `update()` must be called before `getAccel()` — noted
-
-
-  ### Power Budget & Risk Mitigation
-- ESP32-C3 SuperMini 3.3V LDO has a practical thermal limit of ~150-250mA.
-- Current sensor load (MPU6050 ~4mA, INA228 ~1mA, IR ~10mA) is within limits.
-- **Risk:** Motor noise or future sensor additions could exceed LDO capacity, causing I2C bus failures.
-- **Mitigation (for final capture):** Consider a dedicated 3.3V buck converter (e.g., MP1584) fed from the 9V rail to power all sensors, keeping the ESP32 LDO for the MCU only.
-
-## Step 5 — IR speed sensor — PASS
-
-### Hardware
-- LM393 optical sensor + circular disk with 20 holes
-- DO → GPIO10, RISING edge, 1 ms software debounce
-- VCC=3.3V
-
-### Validation (motor-driven, 9V through INA228 → L298N)
-- 30-second continuous run
-- pulses/sec: ~175 (stable ±2)
-- rpm: ~525 (stable ±3)
-- jitter: ±0.4% — comparable to commercial tachometers
-- total count grew monotonically with zero glitches
-
-### Key finding: hand-rotation was misleading
-- Hand rotation: bursts of 5-200 pulses/rev (chatter artifact)
-- Motor-driven: clean 20 pulses/rev
-- Root cause of hand noise: mechanical wobble, not electrical
-- Design principle established: validate sensors under operating
-  conditions, not by hand
-
-### Anomaly to resolve
-- Expected RPM at 7.6V (9V - L298N 1.4V drop): ~255 RPM
-- Observed: ~525 RPM (2.06× expected)
-- Candidate causes:
-    (a) Different gear ratio (e.g., 1:24 instead of 1:48)
-    (b) Higher-voltage motor spec than cheap TT
-- Resolution: not required for fault classification (relative stability
-  matters, not absolute accuracy). Document actual motor as observed.
+### Mount
+- Sensor glued to the top of the yellow TT-motor gearbox for direct
+  mechanical coupling (documented for Phase 6 reproducibility).
 
 ---
 
-## Status summary
+## Step 5 — IR speed sensor — PASS (with documented limitation)
 
-| Step | Sensor | Status |
+### Hardware
+- LM393 optical sensor + circular disk (20 holes)
+- `DO` → GPIO10, RISING edge interrupt, 1 ms software debounce
+
+### Hand-rotation vs motor-driven (key finding)
+- **Hand rotation**: 8–11× pulses per hole (comparator chatter)
+- **Motor-driven**: 20 pulses/rev clean, ±2 RPM jitter
+
+**Conclusion**: hand testing was invalid. The sensor and firmware were
+always correct; the noise was mechanical (hand wobble). Validate sensors
+under their operating conditions.
+
+### Motor-driven validation
+- 30-second continuous run at 6 V supply
+- Pulses/sec: ~175 stable
+- RPM: ~525 stable (±3), jitter ±0.4 %
+
+### Anomaly — expected vs observed RPM
+- Expected at 7.6 V effective (9 V minus L298N drop): ~255 RPM
+- Observed: ~525 RPM (~2× expected)
+- Suspected cause: gear ratio variant (1:24 instead of 1:48) **or**
+  disk has 40 holes, not 20
+- **Not blocking** — recorded for the model card; absolute RPM value does
+  not affect the fault classifier, only the relative stability
+
+---
+
+## Step 6 — Full system capture — PASS
+
+### Capture protocol
+- 9 captures total, 3 per class: `healthy`, `imbalanced`, `friction`
+- 6.0 V supply, current-limited at 1.5 A
+- Each capture: ~50–65 s wall clock (10 s pre-motor wait, 30 s motor-on,
+  remainder spin-down and post-stop)
+- 2436–3197 rows per CSV, 50 Hz sampling
+
+### Fault definitions
+- **healthy**: stock motor, no modification
+- **imbalanced**: 1-cent coin taped to the non-encoder shaft
+- **friction**: cardboard pressed gently against the shaft, no coin
+  (one file `friction_imbalanced_*.csv` was accidentally captured with
+  both fault types; **excluded from training** and moved to
+  `data/raw/archive/`)
+
+### Raw data quality
+- Zero nulls across all 9 CSVs
+- Monotonic `timestamp_ms`
+- No dropped I2C reads
+- 100 % of rows valid for windowing
+
+---
+
+## Cross-cutting: RPM channel dropped in Phase 2
+
+### Observation
+After per-window Z-score standardization, per-channel std on the training
+set was 1.0000 for ax/ay/az/current/voltage, but **0.7037 for rpm**.
+
+### Root cause
+The firmware computes RPM once per **1000 ms window** (1 Hz). The CSV
+sampling rate is 50 Hz. Each 100-sample window (2 s at 50 Hz) therefore
+contains at most **2 distinct RPM values**, and 92 % of windows contain a
+single constant value.
+
+After per-window Z-score, constant windows normalize to all zeros;
+transition windows normalize to a small step. The channel carries
+essentially no information for a CNN at this temporal scale.
+
+### Decision
+- **Phase 3 (current)**: exclude `rpm` from `FEATURE_COLS`.
+  Model trains on 5 channels: ax, ay, az, current_mA, voltage_v.
+- **Phase 4**: add window-level `mean_rpm` as a scalar feature, concatenated
+  after the CNN. No recapture needed; uses data already in the CSVs.
+- **Phase 5+**: modify firmware to sample RPM at 50 Hz, recapture dataset,
+  train a v3 model, and report accuracy delta vs v1.
+
+### Impact
+RPM is not a primary fault signature for imbalance or friction at 1 Hz.
+Excluding it is a defensible engineering trade-off for the prototype.
+The decision, the reasoning, and the roadmap to re-introduce RPM are
+documented in `models/MODEL_LOG.md`.
+
+---
+
+## Final hardware state (as of end of Phase 1)
+
+| Component | Connection | Notes |
 |---|---|---|
-| 1 | USB-CDC | PASS |
-| 2 | Voltage divider | SUPERSEDED by INA228 |
-| 3 | INA228 | PASS |
-| 4 | MPU6500 | PASS |
-| 5 | IR encoder | PASS |
-| 6 | Full combined capture | IN PROGRESS |
+| MPU6500 | SDA=GPIO0, SCL=GPIO1, VCC=3.3 V | Glued to motor housing |
+| INA228 | SDA=GPIO0, SCL=GPIO1, VIN=3.3 V, VIN+/VBUS=supply+, VIN−=L298N +12V | High-side measurement |
+| LM393 | DO=GPIO10, VCC=3.3 V | 20-hole disk, disk-side shaft |
+| L298N | IN1=GPIO4, IN2=GPIO5, ENA jumper ON | 6 V motor supply via INA228 |
+| ESP32-C3 | USB-C power + data | Single-board operation |
 
-### Next: Step 6
-Log all 5 channels at 50 Hz simultaneously. Then run the 3-class data
-collection protocol (healthy / imbalanced / friction), 3-5 runs per class,
-30-60s each.
+---
+
+## Phase 1 → Phase 2 handoff
+
+- Raw CSVs: `data/raw/*.csv` (8 files; 1 archived)
+- Preprocessing: `src/training/preprocess.py`
+  - Window: 100 samples (2 s), step 50 (50 % overlap)
+  - Per-window Z-score normalization
+  - Split by file: 2 train / 1 test per class
+  - Features: ax, ay, az, current_mA, voltage_v (5 channels)
+- Processed outputs: `data/processed/{X_train,y_train,X_test,y_test}.npy`
+- Shapes: X_train (313, 100, 5), X_test (159, 100, 5)
+
+---
+
+## Lessons learned (carry into Phase 3+)
+
+1. **Bring up sensors one at a time.** Every bug we hit (ADC saturation,
+   MPU clone, encoder chatter) would have been masked if all six channels
+   were live on the first power-on.
+2. **Validate under operating conditions, not by hand.** Hand-rotating the
+   encoder showed 8–11× noise that vanished entirely under motor drive.
+3. **Document trade-offs as you make them.** The ACS712 → INA228 switch
+   and the RPM drop were both judgment calls; without the log, they'd
+   look like bugs to a future reader.
+4. **Absolute values matter less than relative stability.** The RPM
+   reading (~525) may not match the TT-motor datasheet, but it is stable
+   to ±0.4 %, which is what the classifier needs.
