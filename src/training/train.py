@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3 — train v1 1D-CNN on 5-channel preprocessed windows."""
+"""Phase 4 — train v2: 5-channel CNN + mean_rpm scalar."""
 
 import json
 import numpy as np
@@ -14,12 +14,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from dataset import get_dataloaders
-from model import MotorCNN1D
+from model import MotorCNN1DWithRPM
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CKPT_DIR = REPO_ROOT / "models" / "checkpoints"
-FIG_DIR  = REPO_ROOT / "results" / "figures"
-REP_DIR  = REPO_ROOT / "results" / "reports"
+FIG_DIR = REPO_ROOT / "results" / "figures"
+REP_DIR = REPO_ROOT / "results" / "reports"
 for d in (CKPT_DIR, FIG_DIR, REP_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
@@ -30,20 +30,19 @@ def evaluate(model, loader, device):
     model.eval()
     preds, targets = [], []
     with torch.no_grad():
-        for x, y in loader:
-            x = x.to(device)
-            preds.append(model(x).argmax(dim=1).cpu().numpy())
+        for x_ts, x_rpm, y in loader:
+            x_ts, x_rpm = x_ts.to(device), x_rpm.to(device)
+            preds.append(model(x_ts, x_rpm).argmax(dim=1).cpu().numpy())
             targets.append(y.numpy())
     return np.concatenate(preds), np.concatenate(targets)
 
 
-def plot_confusion(cm, path):
+def plot_confusion(cm, path, title):
     fig, ax = plt.subplots(figsize=(5, 4))
     im = ax.imshow(cm, cmap="Blues")
     ax.set_xticks(range(len(LABELS))); ax.set_yticks(range(len(LABELS)))
     ax.set_xticklabels(LABELS, rotation=45, ha="right"); ax.set_yticklabels(LABELS)
-    ax.set_xlabel("Predicted"); ax.set_ylabel("True")
-    ax.set_title("Confusion matrix — v1 (5ch)")
+    ax.set_xlabel("Predicted"); ax.set_ylabel("True"); ax.set_title(title)
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             ax.text(j, i, cm[i, j], ha="center", va="center",
@@ -52,12 +51,11 @@ def plot_confusion(cm, path):
     fig.savefig(path, dpi=150); plt.close(fig)
 
 
-def plot_loss(history, path):
+def plot_loss(history, path, title):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(history["train_loss"], label="train")
     ax.plot(history["val_loss"], label="val")
-    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend()
-    ax.set_title("Training curve — v1")
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend(); ax.set_title(title)
     fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
 
 
@@ -66,18 +64,14 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    train_loader, test_loader, (X_train, y_train, X_test, y_test) = get_dataloaders(batch_size=32)
+    train_loader, test_loader, meta = get_dataloaders(batch_size=32)
+    print(f"Train: {meta['n_train']} | Test: {meta['n_test']} | in_channels={meta['in_channels']}")
+    print(f"mean_rpm stats: mean={meta['rpm_mean']:.2f} std={meta['rpm_std']:.2f}")
 
-    # --- Guard against stale .npy ---
-    in_channels = X_train.shape[2]
-    print(f"Train: {len(X_train)} | Test: {len(X_test)} | in_channels={in_channels}")
-    if in_channels != 5:
-        raise SystemExit(
-            f"ERROR: in_channels={in_channels}, expected 5. "
-            f"You are loading stale .npy files. Run preprocess.py first."
-        )
+    if meta["in_channels"] != 5:
+        raise SystemExit(f"ERROR: expected 5 channels, got {meta['in_channels']}. Re-run preprocess.py.")
 
-    model = MotorCNN1D(in_channels=in_channels, n_classes=3).to(device)
+    model = MotorCNN1DWithRPM(in_channels=meta["in_channels"], n_classes=3).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
 
     criterion = nn.CrossEntropyLoss()
@@ -89,19 +83,19 @@ def main():
 
     for epoch in range(1, n_epochs + 1):
         model.train(); running = 0.0
-        for x, y in train_loader:
-            x, y = x.to(device), y.to(device)
+        for x_ts, x_rpm, y in train_loader:
+            x_ts, x_rpm, y = x_ts.to(device), x_rpm.to(device), y.to(device)
             optimizer.zero_grad()
-            loss = criterion(model(x), y)
+            loss = criterion(model(x_ts, x_rpm), y)
             loss.backward(); optimizer.step()
-            running += loss.item() * x.size(0)
+            running += loss.item() * x_ts.size(0)
         train_loss = running / len(train_loader.dataset)
 
         model.eval(); val_loss = 0.0
         with torch.no_grad():
-            for x, y in test_loader:
-                x, y = x.to(device), y.to(device)
-                val_loss += criterion(model(x), y).item() * x.size(0)
+            for x_ts, x_rpm, y in test_loader:
+                x_ts, x_rpm, y = x_ts.to(device), x_rpm.to(device), y.to(device)
+                val_loss += criterion(model(x_ts, x_rpm), y).item() * x_ts.size(0)
         val_loss /= len(test_loader.dataset)
 
         history["train_loss"].append(train_loss)
@@ -123,7 +117,7 @@ def main():
             print(f"Early stopping at epoch {epoch}.")
             break
 
-    ckpt_path = CKPT_DIR / "v1_5ch_baseline.pt"
+    ckpt_path = CKPT_DIR / "v2_5ch_mean_rpm.pt"
     torch.save(best_state, ckpt_path)
     print(f"\nSaved checkpoint: {ckpt_path}")
 
@@ -139,23 +133,24 @@ def main():
     print("\nClassification report:")
     print(classification_report(targets, preds, target_names=LABELS))
 
-    plot_confusion(cm, FIG_DIR / "v1_confusion.png")
-    plot_loss(history, FIG_DIR / "v1_loss_curve.png")
+    plot_confusion(cm, FIG_DIR / "v2_confusion.png", "Confusion matrix — v2 (5ch + mean_rpm)")
+    plot_loss(history, FIG_DIR / "v2_loss_curve.png", "Training curve — v2")
 
     metrics = {
-        "version": "v1_5ch_baseline",
+        "version": "v2_5ch_mean_rpm",
         "accuracy": float(acc),
         "per_class_f1": {k: float(v["f1-score"]) for k, v in report.items() if k in LABELS},
         "confusion_matrix": cm.tolist(),
         "history": history,
-        "in_channels": int(in_channels),
-        "n_train": int(len(X_train)),
-        "n_test": int(len(X_test)),
+        "in_channels": int(meta["in_channels"]),
+        "n_train": int(meta["n_train"]),
+        "n_test": int(meta["n_test"]),
         "model_params": int(sum(p.numel() for p in model.parameters())),
+        "rpm_stats": {"mean": meta["rpm_mean"], "std": meta["rpm_std"]},
     }
-    with open(REP_DIR / "v1_metrics.json", "w") as f:
+    with open(REP_DIR / "v2_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
-    print(f"Saved metrics: {REP_DIR / 'v1_metrics.json'}")
+    print(f"Saved metrics: {REP_DIR / 'v2_metrics.json'}")
 
 
 if __name__ == "__main__":
