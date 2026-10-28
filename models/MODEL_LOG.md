@@ -6,46 +6,70 @@ checkpoint to `models/checkpoints/`.
 
 ---
 
-## v1 — 5-channel baseline (Phase 3, in progress)
+## v1 — 5-channel baseline (Phase 3, DONE)
 
 - **Input**: 5 channels × 100 timesteps = (100, 5)
-  - ax, ay, az (m/s²)
-  - current_mA (mA)
-  - voltage_v (V)
-- **Dropped**: `rpm` (see `docs/phase1_bringup.md` → "RPM channel dropped")
-- **Dataset**: 313 train / 159 test windows, 2 s window, 50 % overlap,
-  per-window Z-score
-- **Split**: by file (2 train / 1 test per class)
-- **Classes**: healthy (0), imbalanced (1), friction (2)
-- **Architecture**: TBD (1D-CNN, 3 conv blocks, GlobalAvgPool, 2 dense)
-- **Training**: TBD (Adam, cross-entropy, early stopping)
+  - ax, ay, az (m/s²), current_mA (mA), voltage_v (V)
+- **Dropped**: `rpm` (1 Hz sample rate; see docs/phase1_bringup.md)
+- **Dataset**: 313 train / 159 test windows, 2 s windows @ 50% overlap
+- **Normalization**: global per-channel mean/std from train set
+  (per-window Z-score replaced — it erased amplitude signatures)
+- **Architecture**: 2 conv blocks (16 → 32 filters), GAP, single dense
+  - Params: 3,203 (was 61,283 in the pre-fix version)
+- **Training**: Adam lr=1e-3, wd=1e-3, CrossEntropy, early stopping (patience=15)
 - **Checkpoint**: `models/checkpoints/v1_5ch_baseline.pt`
-- **Test metrics**:
-  - Accuracy: TBD
-  - Per-class F1: TBD
-  - Confusion matrix: `results/figures/v1_confusion.png`
-- **Rationale**: baseline for the fault classifier. RPM excluded due to
-  1 Hz sampling vs 50 Hz window mismatch — see Step 6 of
-  `docs/phase1_bringup.md`.
+- **Metrics** (test set, 159 windows):
+  - Accuracy: **91.2 %**
+  - Healthy:   P=1.00 R=1.00 F1=1.00  (n=62)
+  - Imbalanced: P=1.00 R=0.72 F1=0.84  (n=50)
+  - Friction:   P=0.77 R=1.00 F1=0.87  (n=47)
+  - Confusion matrix:
+    [[62  0  0]
+     [ 0 36 14]   ← 14 imbalanced predicted as friction
+     [ 0  0 47]]
+- **Overfitting check**: train_loss=0.14, val_loss=0.16 — no gap. Model
+  generalizes; the misclassifications are data overlap, not memorization.
+- **Failure analysis**: all errors are imbalanced → friction. Physical
+  cause: both faults produce rhythmic vibration at shaft frequency;
+  the distinguishing signal is current amplitude, which varies across
+  friction captures due to inconsistent hand-applied cardboard pressure.
+- **Decision**: accept v1 as baseline. Address the imbalanced/friction
+  confusion in v2 with the `mean_rpm` scalar feature.
 
 ---
 
-## v2 — 5 + mean_rpm scalar (Phase 4, planned)
+## v2 — 5 + mean_rpm scalar (Phase 4, DONE)
 
-- **Input**: (100, 5) time series **+** (1,) mean_rpm scalar
-- **New in v2**: `mean_rpm` = per-window mean of the raw RPM staircase,
-  broadcast as a scalar. Fed through a small Dense branch and
-  concatenated with the CNN features before the classification head.
-- **Requires**: minor `preprocess.py` change (save `mean_rpm_*.npy`);
-  minor `train.py` change (two-branch model).
-- **No recapture needed** — uses the existing CSVs.
-- **Hypothesis**: imbalance and friction cause RPM *reductions* or
-  *oscillations* that the 1 Hz signal cannot capture, but the
-  window-mean still captures magnitude (motor running vs. bogged down).
-  Expected accuracy delta: 0–5 %.
-- **Checkpoint (planned)**: `models/checkpoints/v2_5ch_mean_rpm.pt`
-- **Decision criterion**: promote v2 only if it beats v1 by ≥2 % test
-  accuracy **and** per-class F1 does not degrade on any class.
+- **Input**: (100, 5) time series + (1,) mean_rpm scalar (per window)
+- **New in v2**: mean_rpm = per-window mean of the 1 Hz RPM signal.
+  Normalized using train-set mean/std (179.56 / 150.24).
+- **Architecture**: two-branch CNN
+  - Branch 1: 2 conv blocks (16 → 32 filters) + GAP → 32-dim
+  - Branch 2: Linear(1 → 8) + ReLU → 8-dim
+  - Concatenate → Dropout(0.5) → Linear(40 → 3)
+  - Params: 3,243 (+40 vs v1)
+- **Training**: Adam lr=1e-3, wd=1e-3, CrossEntropy, early stopping (patience=15)
+- **Checkpoint**: `models/checkpoints/v2_5ch_mean_rpm.pt`
+- **Metrics** (test set, 159 windows):
+  - Accuracy: **96.2 %** (+5.0 vs v1)
+  - Healthy:    P=1.00 R=1.00 F1=1.00  (n=62)
+  - Imbalanced: P=0.94 R=0.94 F1=0.94  (n=50)
+  - Friction:   P=0.94 R=0.94 F1=0.94  (n=47)
+  - Confusion matrix:
+    [[62  0  0]
+     [ 0 47  3]   ← errors now symmetric (was 14:0)
+     [ 0  3 44]]
+- **Hypothesis outcome**: CONFIRMED
+  - Pre-run analysis suggested mean_rpm had weak univariate signal
+    (class means 158/185/200, std ~150 — overlap)
+  - Empirically, the CNN learned a joint rule combining vibration
+    pattern with mean_rpm to disambiguate imbalanced vs friction
+  - Errors dropped from 14 to 6, both classes' F1 rose to 0.94
+- **Lesson documented**: multimodal fusion extracts signal from features
+  that appear uninformative in isolation. Univariate class statistics do
+  not predict a feature's usefulness to a joint classifier.
+- **Decision**: PROMOTE v2 as the current best model. Use for
+  Phase 5 (quantization and TFLM deployment).
 
 ---
 
