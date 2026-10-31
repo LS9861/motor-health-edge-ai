@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 4 — train v2: 5-channel CNN + mean_rpm scalar."""
+"""Phase 5 (Plan B) — train v3: 6-channel flat 1D-CNN."""
 
 import json
 import numpy as np
@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from dataset import get_dataloaders
-from model import MotorCNN1DWithRPM
+from model import MotorCNN1D
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CKPT_DIR = REPO_ROOT / "models" / "checkpoints"
@@ -30,19 +30,20 @@ def evaluate(model, loader, device):
     model.eval()
     preds, targets = [], []
     with torch.no_grad():
-        for x_ts, x_rpm, y in loader:
-            x_ts, x_rpm = x_ts.to(device), x_rpm.to(device)
-            preds.append(model(x_ts, x_rpm).argmax(dim=1).cpu().numpy())
+        for x, y in loader:
+            x = x.to(device)
+            preds.append(model(x).argmax(dim=1).cpu().numpy())
             targets.append(y.numpy())
     return np.concatenate(preds), np.concatenate(targets)
 
 
-def plot_confusion(cm, path, title):
+def plot_confusion(cm, path):
     fig, ax = plt.subplots(figsize=(5, 4))
     im = ax.imshow(cm, cmap="Blues")
     ax.set_xticks(range(len(LABELS))); ax.set_yticks(range(len(LABELS)))
     ax.set_xticklabels(LABELS, rotation=45, ha="right"); ax.set_yticklabels(LABELS)
-    ax.set_xlabel("Predicted"); ax.set_ylabel("True"); ax.set_title(title)
+    ax.set_xlabel("Predicted"); ax.set_ylabel("True")
+    ax.set_title("Confusion matrix — v3 (6ch flat)")
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             ax.text(j, i, cm[i, j], ha="center", va="center",
@@ -51,11 +52,12 @@ def plot_confusion(cm, path, title):
     fig.savefig(path, dpi=150); plt.close(fig)
 
 
-def plot_loss(history, path, title):
+def plot_loss(history, path):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(history["train_loss"], label="train")
     ax.plot(history["val_loss"], label="val")
-    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend(); ax.set_title(title)
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend()
+    ax.set_title("Training curve — v3")
     fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
 
 
@@ -66,12 +68,11 @@ def main():
 
     train_loader, test_loader, meta = get_dataloaders(batch_size=32)
     print(f"Train: {meta['n_train']} | Test: {meta['n_test']} | in_channels={meta['in_channels']}")
-    print(f"mean_rpm stats: mean={meta['rpm_mean']:.2f} std={meta['rpm_std']:.2f}")
 
-    if meta["in_channels"] != 5:
-        raise SystemExit(f"ERROR: expected 5 channels, got {meta['in_channels']}. Re-run preprocess.py.")
+    if meta["in_channels"] != 6:
+        raise SystemExit(f"ERROR: expected 6 channels, got {meta['in_channels']}. Run preprocess.py first.")
 
-    model = MotorCNN1DWithRPM(in_channels=meta["in_channels"], n_classes=3).to(device)
+    model = MotorCNN1D(in_channels=meta["in_channels"], n_classes=3).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
 
     criterion = nn.CrossEntropyLoss()
@@ -83,19 +84,19 @@ def main():
 
     for epoch in range(1, n_epochs + 1):
         model.train(); running = 0.0
-        for x_ts, x_rpm, y in train_loader:
-            x_ts, x_rpm, y = x_ts.to(device), x_rpm.to(device), y.to(device)
+        for x, y in train_loader:
+            x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss = criterion(model(x_ts, x_rpm), y)
+            loss = criterion(model(x), y)
             loss.backward(); optimizer.step()
-            running += loss.item() * x_ts.size(0)
+            running += loss.item() * x.size(0)
         train_loss = running / len(train_loader.dataset)
 
         model.eval(); val_loss = 0.0
         with torch.no_grad():
-            for x_ts, x_rpm, y in test_loader:
-                x_ts, x_rpm, y = x_ts.to(device), x_rpm.to(device), y.to(device)
-                val_loss += criterion(model(x_ts, x_rpm), y).item() * x_ts.size(0)
+            for x, y in test_loader:
+                x, y = x.to(device), y.to(device)
+                val_loss += criterion(model(x), y).item() * x.size(0)
         val_loss /= len(test_loader.dataset)
 
         history["train_loss"].append(train_loss)
@@ -117,7 +118,7 @@ def main():
             print(f"Early stopping at epoch {epoch}.")
             break
 
-    ckpt_path = CKPT_DIR / "v2_5ch_mean_rpm.pt"
+    ckpt_path = CKPT_DIR / "v3_6ch_flat.pt"
     torch.save(best_state, ckpt_path)
     print(f"\nSaved checkpoint: {ckpt_path}")
 
@@ -133,11 +134,11 @@ def main():
     print("\nClassification report:")
     print(classification_report(targets, preds, target_names=LABELS))
 
-    plot_confusion(cm, FIG_DIR / "v2_confusion.png", "Confusion matrix — v2 (5ch + mean_rpm)")
-    plot_loss(history, FIG_DIR / "v2_loss_curve.png", "Training curve — v2")
+    plot_confusion(cm, FIG_DIR / "v3_confusion.png")
+    plot_loss(history, FIG_DIR / "v3_loss_curve.png")
 
     metrics = {
-        "version": "v2_5ch_mean_rpm",
+        "version": "v3_6ch_flat",
         "accuracy": float(acc),
         "per_class_f1": {k: float(v["f1-score"]) for k, v in report.items() if k in LABELS},
         "confusion_matrix": cm.tolist(),
@@ -146,11 +147,10 @@ def main():
         "n_train": int(meta["n_train"]),
         "n_test": int(meta["n_test"]),
         "model_params": int(sum(p.numel() for p in model.parameters())),
-        "rpm_stats": {"mean": meta["rpm_mean"], "std": meta["rpm_std"]},
     }
-    with open(REP_DIR / "v2_metrics.json", "w") as f:
+    with open(REP_DIR / "v3_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
-    print(f"Saved metrics: {REP_DIR / 'v2_metrics.json'}")
+    print(f"Saved metrics: {REP_DIR / 'v3_metrics.json'}")
 
 
 if __name__ == "__main__":

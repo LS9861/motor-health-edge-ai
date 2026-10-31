@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""1D-CNN with two branches: time series + mean_rpm scalar (v2)."""
+"""
+Simple 6-channel 1D-CNN for motor fault classification (v3).
+
+Input:  (batch, 6, 100)  — 5 sensor channels + mean_rpm (repeated)
+Output: (batch, 3)       — logits for [healthy, imbalanced, friction]
+
+No branches, no concat, no multi-input. Easiest possible model to
+convert to TFLite.
+"""
 
 import torch
 import torch.nn as nn
 
 
-class MotorCNN1DWithRPM(nn.Module):
-    def __init__(self, in_channels: int = 5, n_classes: int = 3, dropout: float = 0.5):
+class MotorCNN1D(nn.Module):
+    def __init__(self, in_channels: int = 6, n_classes: int = 3, dropout: float = 0.5):
         super().__init__()
 
-        def conv_block(c_in, c_out, kernel=5):
+        # A small reusable conv block: Conv → BatchNorm → ReLU → MaxPool
+        def block(c_in, c_out, kernel=5):
             return nn.Sequential(
                 nn.Conv1d(c_in, c_out, kernel_size=kernel, padding=kernel // 2),
                 nn.BatchNorm1d(c_out),
@@ -17,39 +26,31 @@ class MotorCNN1DWithRPM(nn.Module):
                 nn.MaxPool1d(kernel_size=2),
             )
 
-        # Branch 1: time series (5, 100) -> (32, 25) -> GAP -> (32,)
+                # Two conv blocks: 6 → 8 → 16 channels (smaller for ESP32)
         self.features = nn.Sequential(
-            conv_block(in_channels, 16),
-            conv_block(16, 32),
+            block(in_channels, 8),
+            block(8, 16),
         )
+
+        # Global average pooling: reduces (batch, 32, 25) → (batch, 32, 1)
         self.gap = nn.AdaptiveAvgPool1d(1)
-        self.cnn_out_dim = 32
 
-        # Branch 2: mean_rpm scalar (1,) -> (8,)
-        self.rpm_branch = nn.Sequential(
-            nn.Linear(1, 8),
-            nn.ReLU(inplace=True),
-        )
-
-        # Fusion + head
-        fused_dim = self.cnn_out_dim + 8
+        # Final classifier: dropout then one dense layer
         self.classifier = nn.Sequential(
+            nn.Flatten(),          # (batch, 32)
             nn.Dropout(dropout),
-            nn.Linear(fused_dim, n_classes),
+            nn.Linear(16, n_classes),
         )
 
-    def forward(self, x_ts, x_rpm):
-        # x_ts:  (B, C, T)   time series
-        # x_rpm: (B, 1)      scalar per sample
-        h_ts = self.gap(self.features(x_ts)).flatten(1)   # (B, 32)
-        h_rpm = self.rpm_branch(x_rpm)                     # (B, 8)
-        h = torch.cat([h_ts, h_rpm], dim=1)                # (B, 40)
-        return self.classifier(h)
+    def forward(self, x):
+        # x: (batch, channels, timesteps)
+        x = self.features(x)
+        x = self.gap(x)
+        return self.classifier(x)
 
 
+# Quick self-test when running this file directly
 if __name__ == "__main__":
-    m = MotorCNN1DWithRPM(in_channels=5)
+    m = MotorCNN1D(in_channels=6)
     print("Params:", sum(p.numel() for p in m.parameters()))
-    x_ts = torch.randn(8, 5, 100)
-    x_rpm = torch.randn(8, 1)
-    print("Output:", m(x_ts, x_rpm).shape)
+    print("Output:", m(torch.randn(8, 6, 100)).shape)

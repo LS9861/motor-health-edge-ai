@@ -1,25 +1,24 @@
 # configs/sensors.yaml
-# Single source of truth for sensor configuration.
-# Firmware and Python preprocessing must stay consistent with this file.
 
 sampling:
   target_hz: 50
-  window_samples: 100
-  step_samples: 50
+  window_samples: 50
+  step_samples: 25
   rpm_window_ms: 1000
 
-# Feature selection lives here so we can edit YAML instead of code.
-# RPM is intentionally NOT in time_series (see docs/phase1_bringup.md).
-# It will return in Phase 4 as scalar `mean_rpm` and Phase 5 as 50Hz time series.
 features:
+  # 5 real sensor channels
   time_series:
     - ax
     - ay
     - az
     - current_mA
     - voltage_v
-  # scalar_features:            # Phase 4 — will add mean_rpm
-  #   - mean_rpm
+  
+  # NEW — v3 uses a 6th channel built from mean_rpm.
+  # Set this to true so preprocess.py appends the mean_rpm column
+  # (repeated 100 times) as a 6th channel to every window.
+  rpm_as_channel: true
 
 channels:
   - name: ax
@@ -40,7 +39,6 @@ channels:
   - name: rpm
     unit: rpm
     source: ir
-    note: "1 Hz in firmware; dropped from Phase 3 features."
 
 labels:
   - healthy
