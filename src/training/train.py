@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 5 (Plan B) — train v3: 6-channel flat 1D-CNN."""
+"""Phase 5 (Plan B) — train v3: 5-channel flat 1D-CNN (no voltage)."""
 
 import json
 import numpy as np
@@ -43,7 +43,7 @@ def plot_confusion(cm, path):
     ax.set_xticks(range(len(LABELS))); ax.set_yticks(range(len(LABELS)))
     ax.set_xticklabels(LABELS, rotation=45, ha="right"); ax.set_yticklabels(LABELS)
     ax.set_xlabel("Predicted"); ax.set_ylabel("True")
-    ax.set_title("Confusion matrix — v3 (6ch flat)")
+    ax.set_title("Confusion matrix — v3 (5ch flat, no voltage)")
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             ax.text(j, i, cm[i, j], ha="center", va="center",
@@ -57,7 +57,7 @@ def plot_loss(history, path):
     ax.plot(history["train_loss"], label="train")
     ax.plot(history["val_loss"], label="val")
     ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend()
-    ax.set_title("Training curve — v3")
+    ax.set_title("Training curve — v3 (5ch)")
     fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
 
 
@@ -69,8 +69,8 @@ def main():
     train_loader, test_loader, meta = get_dataloaders(batch_size=32)
     print(f"Train: {meta['n_train']} | Test: {meta['n_test']} | in_channels={meta['in_channels']}")
 
-    if meta["in_channels"] != 6:
-        raise SystemExit(f"ERROR: expected 6 channels, got {meta['in_channels']}. Run preprocess.py first.")
+    if meta["in_channels"] != 5:
+        raise SystemExit(f"ERROR: expected 5 channels, got {meta['in_channels']}. Run preprocess.py first.")
 
     model = MotorCNN1D(in_channels=meta["in_channels"], n_classes=3).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
@@ -118,7 +118,7 @@ def main():
             print(f"Early stopping at epoch {epoch}.")
             break
 
-    ckpt_path = CKPT_DIR / "v3_6ch_flat.pt"
+    ckpt_path = CKPT_DIR / "v3_5ch_flat.pt"
     torch.save(best_state, ckpt_path)
     print(f"\nSaved checkpoint: {ckpt_path}")
 
@@ -138,7 +138,7 @@ def main():
     plot_loss(history, FIG_DIR / "v3_loss_curve.png")
 
     metrics = {
-        "version": "v3_6ch_flat",
+        "version": "v3_5ch_flat",
         "accuracy": float(acc),
         "per_class_f1": {k: float(v["f1-score"]) for k, v in report.items() if k in LABELS},
         "confusion_matrix": cm.tolist(),

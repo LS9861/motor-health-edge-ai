@@ -33,7 +33,7 @@ class MotorCNN1D(nn.Module):
         )
 
         # Global average pooling: reduces (batch, 32, 25) → (batch, 32, 1)
-        self.gap = nn.AdaptiveAvgPool1d(1)
+        self.gap = nn.AvgPool1d(kernel_size=12)
 
         # Final classifier: dropout then one dense layer
         self.classifier = nn.Sequential(

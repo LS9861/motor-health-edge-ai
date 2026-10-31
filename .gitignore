@@ -25,3 +25,29 @@ venv/
 # --- OS ---
 Thumbs.db
 .DS_Store
+
+# --- Virtual environments ---
+venv_py312/
+venv_conversion/
+venv_linux/
+
+# --- Compiled binaries ---
+*.exe
+*.bin
+*.hex
+*.elf
+
+# --- Editor ---
+.vscode/
+.idea/
+
+# --- Scratch test scripts (not part of pipeline) ---
+scripts/test_real_data.py
+scripts/test_tflite_alive.py
+scripts/test_param.py
+scripts/check_int8_sanity.py
+scripts/quantize_v3_int8.py
+
+# --- Larger ONNX artifacts (optional: keep, but decide) ---
+# models/onnx/*.onnx
+# !models/onnx/v3_export.onnx

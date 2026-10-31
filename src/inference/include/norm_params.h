@@ -11,7 +11,6 @@ static const float NORM_MEAN[6] = {
      0.1577f,   // ay
     10.5465f,   // az
    114.8340f,  // current_mA
-     5.9893f,   // voltage_v
    177.0138f   // rpm
 };
 
@@ -20,7 +19,6 @@ static const float NORM_STD[6] = {
     0.4800f,   // ay
     0.3332f,   // az
    75.6060f,   // current_mA
-    0.0251f,   // voltage_v
   152.3184f    // rpm
 };
 

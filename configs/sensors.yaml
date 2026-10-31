@@ -13,7 +13,7 @@ features:
     - ay
     - az
     - current_mA
-    - voltage_v
+    # - voltage_v
   
   # NEW — v3 uses a 6th channel built from mean_rpm.
   # Set this to true so preprocess.py appends the mean_rpm column
