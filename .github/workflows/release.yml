@@ -46,7 +46,7 @@ jobs:
         run: pytest tests/ -v
 
   # ---------------------------------------------------------------------------
-  # Job 2: build firmware + collect release artifacts
+  # Job 2: build firmware + merge bootloader/partitions/app into one binary
   # ---------------------------------------------------------------------------
   build:
     needs: verify                     # only runs if verify passed
@@ -66,11 +66,54 @@ jobs:
         working-directory: src/inference
         run: pio run
 
-      - name: Upload firmware artifact (intra-workflow)
+      - name: Install esptool
+        run: pip install "esptool>=4.7"
+
+      - name: Merge bootloader + partitions + app into a single flashable binary
+        working-directory: src/inference
+        run: |
+          BUILD=".pio/build/esp32-c3-devkitm-1"
+          echo "Contents of $BUILD:"
+          ls -la "$BUILD/" || true
+
+          # Merge command. ESP32-C3 default layout:
+          #   0x0     bootloader
+          #   0x8000  partition table
+          #   0xe000  boot_app0 (may be absent in some builds)
+          #   0x10000 application
+          #
+          # We conditionally include boot_app0.bin only if it exists.
+          if [ -f "$BUILD/boot_app0.bin" ]; then
+            echo "boot_app0.bin present — including at 0xe000"
+            python -m esptool --chip esp32c3 merge-bin \
+              -o "$BUILD/merged_firmware.bin" \
+              --flash-mode dio \
+              --flash-freq 40m \
+              --flash-size 4MB \
+              0x0     "$BUILD/bootloader.bin" \
+              0x8000  "$BUILD/partitions.bin" \
+              0xe000  "$BUILD/boot_app0.bin" \
+              0x10000 "$BUILD/firmware.bin"
+          else
+            echo "boot_app0.bin absent — merging without it"
+            python -m esptool --chip esp32c3 merge-bin \
+              -o "$BUILD/merged_firmware.bin" \
+              --flash-mode dio \
+              --flash-freq 40m \
+              --flash-size 4MB \
+              0x0     "$BUILD/bootloader.bin" \
+              0x8000  "$BUILD/partitions.bin" \
+              0x10000 "$BUILD/firmware.bin"
+          fi
+
+          echo "Merged binary:"
+          ls -la "$BUILD/merged_firmware.bin"
+
+      - name: Upload merged firmware artifact (intra-workflow)
         uses: actions/upload-artifact@v4
         with:
           name: firmware-bin
-          path: src/inference/.pio/build/esp32-c3-devkitm-1/firmware.bin
+          path: src/inference/.pio/build/esp32-c3-devkitm-1/merged_firmware.bin
           if-no-files-found: error
 
       - name: Upload model header artifact (intra-workflow)
@@ -120,7 +163,7 @@ jobs:
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "Releasing $TAG"
-          mv artifacts/firmware.bin artifacts/firmware-${TAG}.bin
+          mv artifacts/merged_firmware.bin artifacts/merged_firmware-${TAG}.bin
           mv artifacts/model_data.h artifacts/model_data-${TAG}.h
           mv artifacts/v3_int8.tflite artifacts/v3_int8-${TAG}.tflite
           ls -la artifacts/
@@ -143,7 +186,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/firmware-*.bin
+            artifacts/merged_firmware-*.bin
             artifacts/model_data-*.h
             artifacts/v3_int8-*.tflite
           generate_release_notes: true
@@ -157,7 +200,7 @@ jobs:
             TensorFlow Lite Micro.
 
             ### Artifacts
-            - **firmware-*.bin** — flashable ESP32-C3 binary (use `esptool.py write_flash`)
+            - **merged_firmware-*.bin** — **flash this** (bootloader + partitions + app, flash at 0x0)
             - **model_data-*.h** — C header for rebuilding from source
             - **v3_int8-*.tflite** — quantised model for external use
 
@@ -168,5 +211,10 @@ jobs:
             - TFLM firmware verified on real hardware
 
             ### Flashing instructions
+
             ```bash
-            esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash 0x0 firmware-*.bin
+            # 1. Erase (recommended when switching firmware)
+            python -m esptool --chip esp32c3 --port COM6 erase-flash
+
+            # 2. Flash the merged binary at 0x0
+            python -m esptool --chip esp32c3 --port COM6 -b 460800 write-flash 0x0 merged_firmware-${{ github.ref_name }}.bin
