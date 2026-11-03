@@ -4,6 +4,7 @@ import csv
 import sys
 from datetime import datetime
 from pathlib import Path
+
 import serial
 import serial.tools.list_ports
 
@@ -78,7 +79,7 @@ def main() -> None:
                 print(f"\rSaving... {rows} rows", end="")
 
     except KeyboardInterrupt:
-        print(f"\n\n🛑 Logging stopped.")
+        print("\n\n🛑 Logging stopped.")
     finally:
         print(f"💾 File saved with {rows} rows to:\n   {out_path.absolute()}")
 

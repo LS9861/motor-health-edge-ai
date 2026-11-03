@@ -6,15 +6,14 @@ Export v3_5ch_flat.pt → v3_float.tflite + v3_int8.tflite
 Uses opset 17 + onnx2tf -kat to properly handle AdaptiveAvgPool1d.
 """
 
-import sys
 import shutil
 import subprocess
-import numpy as np
-import torch
-import tensorflow as tf
 import sys
-
 from pathlib import Path
+
+import numpy as np
+import tensorflow as tf
+import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src" / "training"))
@@ -114,6 +113,7 @@ print("STEP 4: Verify ONNX")
 print("=" * 60)
 
 import onnxruntime as ort
+
 onnx_out = ort.InferenceSession(str(ONNX_OUT), providers=["CPUExecutionProvider"]).run(
     None, {"input": healthy_nct}
 )[0][0]

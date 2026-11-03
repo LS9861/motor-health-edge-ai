@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Sanity check the preprocessed .npy arrays."""
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 PROC = Path("data/processed")
 LABELS = ["healthy", "imbalanced", "friction"]

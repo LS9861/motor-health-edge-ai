@@ -5,12 +5,13 @@ Phase 2 (v3): Preprocessing for the 6-channel model.
 Creates X_train.npy of shape (N, 50, 6) -> (samples, timesteps, channels).
 Automatically loads 3 files per class from data/raw based on filename prefix.
 """
+import glob
 import os
-import yaml
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import glob
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 RAW_DIR = Path(os.environ.get("MHE_RAW_DIR", REPO_ROOT / "data" / "raw"))
@@ -121,7 +122,7 @@ def main():
     np.save(PROCESSED_DIR / "train_mean.npy", train_mean)
     np.save(PROCESSED_DIR / "train_std.npy", train_std)
 
-    print(f"\n--- SUCCESS ---")
+    print("\n--- SUCCESS ---")
     print(f"X_train shape: {X_train.shape}") # Should be (N, 50, 6)
     print(f"X_test shape:  {X_test.shape}")
     print(f"\nNORM_MEAN: {np.round(train_mean, 4)}")

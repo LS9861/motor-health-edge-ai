@@ -5,8 +5,9 @@ Takes the first 200 rows of one raw CSV per class and saves to tests/fixtures/.
 Run once. Commit the resulting files.
 """
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO_ROOT / "data" / "raw"

@@ -5,10 +5,11 @@ Phase 5.2 — Verify INT8 TFLite accuracy vs float32.
 Expected result: INT8 accuracy within 1-2% of float32 (96.2%).
 """
 
+from pathlib import Path
+
 import numpy as np
 import tensorflow as tf
-from pathlib import Path
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PROCESSED_DIR = REPO_ROOT / "data" / "processed"

@@ -4,10 +4,11 @@ Phase 5.1 — Export v2 to ONNX, convert to SavedModel via onnx2tf,
 then quantize SavedModel -> INT8 TFLite.
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import torch
-from pathlib import Path
-import sys
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CKPT_PATH = REPO_ROOT / "models" / "checkpoints" / "v2_5ch_mean_rpm.pt"
@@ -95,6 +96,6 @@ tflite_model = converter.convert()
 tflite_path = TFLITE_DIR / "v2_motor_health_int8.tflite"
 tflite_path.write_bytes(tflite_model)
 
-print(f"\nDone.")
+print("\nDone.")
 print(f"ONNX      : {onnx_path}  ({onnx_path.stat().st_size / 1024:.1f} KB)")
 print(f"TFLite INT8: {tflite_path}  ({tflite_path.stat().st_size / 1024:.1f} KB)")

@@ -2,18 +2,19 @@
 """Phase 5 (Plan B) — train v3: 5-channel flat 1D-CNN (no voltage)."""
 
 import json
+from pathlib import Path
+
+import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from torch.optim import Adam
-from pathlib import Path
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
-import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import os
 
+import matplotlib.pyplot as plt
 from dataset import get_dataloaders
 from model import MotorCNN1D
 
@@ -41,29 +42,39 @@ def evaluate(model, loader, device):
 def plot_confusion(cm, path):
     fig, ax = plt.subplots(figsize=(5, 4))
     im = ax.imshow(cm, cmap="Blues")
-    ax.set_xticks(range(len(LABELS))); ax.set_yticks(range(len(LABELS)))
-    ax.set_xticklabels(LABELS, rotation=45, ha="right"); ax.set_yticklabels(LABELS)
-    ax.set_xlabel("Predicted"); ax.set_ylabel("True")
+    ax.set_xticks(range(len(LABELS)))
+    ax.set_yticks(range(len(LABELS)))
+    ax.set_xticklabels(LABELS, rotation=45, ha="right")
+    ax.set_yticklabels(LABELS)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
     ax.set_title("Confusion matrix — v3 (5ch flat, no voltage)")
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             ax.text(j, i, cm[i, j], ha="center", va="center",
                     color="white" if cm[i, j] > cm.max() / 2 else "black")
-    fig.colorbar(im, ax=ax); fig.tight_layout()
-    fig.savefig(path, dpi=150); plt.close(fig)
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
 
 
 def plot_loss(history, path):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(history["train_loss"], label="train")
     ax.plot(history["val_loss"], label="val")
-    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.legend()
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.legend()
     ax.set_title("Training curve — v3 (5ch)")
-    fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
 
 
 def main():
-    torch.manual_seed(42); np.random.seed(42)
+    torch.manual_seed(42)
+    np.random.seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
@@ -81,21 +92,26 @@ def main():
 
 
     n_epochs = int(os.environ.get("MHE_EPOCHS", 80))
-    patience = 15; epochs_no_improve = 0
-    best_val = float("inf"); best_state = None
+    patience = 15
+    epochs_no_improve = 0
+    best_val = float("inf")
+    best_state = None
     history = {"train_loss": [], "val_loss": []}
 
     for epoch in range(1, n_epochs + 1):
-        model.train(); running = 0.0
+        model.train()
+        running = 0.0
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
             loss = criterion(model(x), y)
-            loss.backward(); optimizer.step()
+            loss.backward()
+            optimizer.step()
             running += loss.item() * x.size(0)
         train_loss = running / len(train_loader.dataset)
 
-        model.eval(); val_loss = 0.0
+        model.eval()
+        val_loss = 0.0
         with torch.no_grad():
             for x, y in test_loader:
                 x, y = x.to(device), y.to(device)

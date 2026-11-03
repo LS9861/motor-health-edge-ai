@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """PyTorch Dataset for the 6-channel motor model (v3)."""
 
+from pathlib import Path
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from pathlib import Path
+from torch.utils.data import DataLoader, Dataset
 
 PROCESSED_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "processed"
 

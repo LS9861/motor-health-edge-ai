@@ -5,7 +5,7 @@ target-version = "py312"
 [tool.ruff.lint]
 # Only check for real errors, not style nitpicks (CI-friendliness)
 select = ["E", "F", "I"]
-ignore = ["E501"]  # line-too-long — we allow 120 chars, ignore the rest
+ignore = ["E501", "E402"]  # line-too-long, module-level-import-not-at-top  # line-too-long — we allow 120 chars, ignore the rest
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
