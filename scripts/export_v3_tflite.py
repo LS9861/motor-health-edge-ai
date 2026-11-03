@@ -12,6 +12,8 @@ import subprocess
 import numpy as np
 import torch
 import tensorflow as tf
+import sys
+
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -273,9 +275,13 @@ for i in range(len(X_test_in)):
 acc = correct / len(X_test_in)
 print(f"INT8 accuracy: {acc * 100:.2f}%  ({correct}/{len(X_test_in)})")
 
-if acc < 0.70:  # lowered from 0.85 — 5ch model may be lower than 6ch
+smoke_mode = "--smoke" in sys.argv
+
+if not smoke_mode and acc < 0.70:
     print("❌ INT8 accuracy dropped below 70%")
     sys.exit(1)
+elif smoke_mode:
+    print(f"⚠️  Smoke mode: skipping accuracy gate (acc={acc:.2%})")
 
 print("\n" + "=" * 60)
 print("🎉 EXPORT COMPLETE")

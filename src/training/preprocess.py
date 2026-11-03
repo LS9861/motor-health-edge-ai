@@ -5,7 +5,7 @@ Phase 2 (v3): Preprocessing for the 6-channel model.
 Creates X_train.npy of shape (N, 50, 6) -> (samples, timesteps, channels).
 Automatically loads 3 files per class from data/raw based on filename prefix.
 """
-
+import os
 import yaml
 import numpy as np
 import pandas as pd
@@ -13,7 +13,7 @@ from pathlib import Path
 import glob
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-RAW_DIR = REPO_ROOT / "data" / "raw"
+RAW_DIR = Path(os.environ.get("MHE_RAW_DIR", REPO_ROOT / "data" / "raw"))
 PROCESSED_DIR = REPO_ROOT / "data" / "processed"
 CONFIG_PATH = REPO_ROOT / "configs" / "sensors.yaml"
 
@@ -74,12 +74,18 @@ def main():
         # Find all CSVs for this label
         files = sorted(glob.glob(str(RAW_DIR / f"{label}_*.csv")))
         
-        if len(files) < 3:
-            raise ValueError(f"Found {len(files)} files for '{label}'. Need at least 3.")
+        if len(files) < 1:
+            raise ValueError(f"No files found for '{label}' in {RAW_DIR}.")
 
-        # Use the last file alphabetically as the test set, first two as train
-        test_files = files[-1:]
-        train_files = files[:-1]
+        # Real mode (>=3 files): last file is test, others are train
+        # Fixture mode (1 file): same file used for both (smoke test only)
+        if len(files) >= 3:
+            test_files = files[-1:]
+            train_files = files[:-1]
+        else:
+            test_files = files
+            train_files = files
+            print(f"  ⚠️  Only {len(files)} file(s) for '{label}' — using same file for train+test (fixture mode)")
 
         for fpath in train_files:
             df = load_and_clean_csv(Path(fpath))

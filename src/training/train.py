@@ -12,6 +12,7 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import os
 
 from dataset import get_dataloaders
 from model import MotorCNN1D
@@ -78,8 +79,10 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
 
+
+    n_epochs = int(os.environ.get("MHE_EPOCHS", 80))
+    patience = 15; epochs_no_improve = 0
     best_val = float("inf"); best_state = None
-    patience = 15; epochs_no_improve = 0; n_epochs = 80
     history = {"train_loss": [], "val_loss": []}
 
     for epoch in range(1, n_epochs + 1):

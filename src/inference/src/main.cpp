@@ -276,8 +276,44 @@ void loop()
         if (logits[i] > logits[best])
             best = i;
 
-    Serial.printf("%lu,%s,%.2f,%.2f,%.2f,%.0f\n",
-                  now, labels[best], logits[0], logits[1], logits[2], rpm);
+    // ---- State-machine debouncing: require 3 consecutive same-class windows ----
+    static int prediction_buffer[3] = {-1, -1, -1};
+    static int buffer_idx = 0;
+    static int confirmed_class = -1; // -1 = not yet confirmed
+    static bool buffer_filled = false;
+
+    prediction_buffer[buffer_idx] = best;
+    buffer_idx = (buffer_idx + 1) % 3;
+    if (buffer_idx == 0)
+        buffer_filled = true;
+
+    int new_confirmed = -1;
+    if (buffer_filled &&
+        prediction_buffer[0] == prediction_buffer[1] &&
+        prediction_buffer[1] == prediction_buffer[2])
+    {
+        new_confirmed = prediction_buffer[0];
+    }
+
+    if (new_confirmed != -1 && new_confirmed != confirmed_class)
+    {
+        confirmed_class = new_confirmed;
+        Serial.print("# STATE CHANGE -> ");
+        Serial.println(labels[confirmed_class]);
+    }
+
+    if (confirmed_class == -1)
+    {
+        // Not yet confirmed — wait for 3 consistent windows
+        Serial.printf("%lu,WAITING,%.2f,%.2f,%.2f,%.0f\n",
+                      now, logits[0], logits[1], logits[2], rpm);
+    }
+    else
+    {
+        Serial.printf("%lu,%s,%.2f,%.2f,%.2f,%.0f\n",
+                      now, labels[confirmed_class],
+                      logits[0], logits[1], logits[2], rpm);
+    }
 
     window_idx = 0;
 }
