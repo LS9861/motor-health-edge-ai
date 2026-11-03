@@ -27,7 +27,7 @@ tf-keras==2.19.0
 onnx==1.16.2
 onnxruntime==1.17.0
 onnx2tf==1.28.8
-onnx_graphsurgeon==0.3.27
+https://developer.download.nvidia.com/compute/redist/onnx-graphsurgeon/onnx_graphsurgeon-0.3.27-py2.py3-none-any.whl
 sng4onnx==1.0.4
 
 # ---------- Serial logger (for scripts/log_data.py) ----------
