@@ -1,0 +1,37 @@
+# requirements.txt
+# Pinned to versions verified working on 2025-10-31 (WSL Python 3.12)
+# Regenerate with: pip freeze > requirements.txt
+# Update carefully — numpy<2 / scipy<1.16 / onnxruntime==1.17.0 must stay in sync
+
+# ---------- Core numeric stack ----------
+numpy==1.26.4
+scipy==1.15.3
+pandas==2.2.3
+pyyaml==6.0.2
+
+# ---------- PyTorch (CPU only — GPU not needed for 963-param model) ----------
+torch==2.5.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# ---------- scikit-learn ----------
+scikit-learn==1.5.2
+
+# ---------- Plotting ----------
+matplotlib==3.9.2
+
+# ---------- TensorFlow / TFLite ----------
+tensorflow==2.19.0
+tf-keras==2.19.0
+
+# ---------- ONNX stack (opset 17 → onnx2tf → TFLite) ----------
+onnx==1.16.2
+onnxruntime==1.17.0
+onnx2tf==1.28.8
+onnx_graphsurgeon==0.3.27
+sng4onnx==1.0.4
+
+# ---------- Serial logger (for scripts/log_data.py) ----------
+pyserial==3.5
+
+# ---------- Testing ----------
+pytest==8.3.3
