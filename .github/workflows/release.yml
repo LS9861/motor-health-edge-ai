@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'     # only tags like v0.1.0, v1.2.3, v2.0.0-rc1
+                     # normal pushes to main are ignored
+
+permissions:
+  contents: write    # required to create GitHub Releases
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: verify the repo still builds before releasing
+  # ---------------------------------------------------------------------------
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: Lint
+        run: ruff check src/ scripts/
+
+      - name: Preprocess fixtures
+        env:
+          MHE_RAW_DIR: tests/fixtures
+        run: python src/training/preprocess.py
+
+      - name: Train 2 epochs
+        env:
+          MHE_EPOCHS: "2"
+        run: python src/training/train.py
+
+      - name: Smoke tests
+        run: pytest tests/ -v
+
+  # ---------------------------------------------------------------------------
+  # Job 2: build firmware + collect release artifacts
+  # ---------------------------------------------------------------------------
+  build:
+    needs: verify                     # only runs if verify passed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        working-directory: src/inference
+        run: pio run
+
+      - name: Upload firmware artifact (intra-workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bin
+          path: src/inference/.pio/build/esp32-c3-devkitm-1/firmware.bin
+          if-no-files-found: error
+
+      - name: Upload model header artifact (intra-workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-header
+          path: src/inference/include/model_data.h
+          if-no-files-found: error
+
+      - name: Upload INT8 tflite artifact (intra-workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tflite-int8
+          path: models/tflite/v3_int8.tflite
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Job 3: create the GitHub Release and attach the artifacts
+  # ---------------------------------------------------------------------------
+  release:
+    needs: build                      # only runs if build passed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0              # full history for release notes
+
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-bin
+          path: artifacts/
+
+      - name: Download model header artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: model-header
+          path: artifacts/
+
+      - name: Download tflite artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tflite-int8
+          path: artifacts/
+
+      - name: Rename artifacts with tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Releasing $TAG"
+          mv artifacts/firmware.bin artifacts/firmware-${TAG}.bin
+          mv artifacts/model_data.h artifacts/model_data-${TAG}.h
+          mv artifacts/v3_int8.tflite artifacts/v3_int8-${TAG}.tflite
+          ls -la artifacts/
+
+      - name: Determine prerelease flag
+        id: pre
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          # semver: v1.x.y and above = stable; v0.x.y = prerelease
+          MAJOR=$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*/\1/')
+          if [ "$MAJOR" = "0" ]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "Marking $TAG as PRERELEASE (major version 0)"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "Marking $TAG as STABLE release"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/firmware-*.bin
+            artifacts/model_data-*.h
+            artifacts/v3_int8-*.tflite
+          generate_release_notes: true
+          prerelease: ${{ steps.pre.outputs.is_prerelease }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## motor-health-edge-ai ${{ github.ref_name }}
+
+            Motor health classifier for the ESP32-C3, using a 5-channel 1D-CNN
+            (vibration + current + RPM) quantised to INT8 TFLite and deployed via
+            TensorFlow Lite Micro.
+
+            ### Artifacts
+            - **firmware-*.bin** — flashable ESP32-C3 binary (use `esptool.py write_flash`)
+            - **model_data-*.h** — C header for rebuilding from source
+            - **v3_int8-*.tflite** — quantised model for external use
+
+            ### What's included
+            - 5-channel INT8 model (96.59% test accuracy, lossless quantisation)
+            - Voltage removed from the feature set after a shortcut-learning
+              diagnosis — see `docs/phase6_deployment.md`
+            - TFLM firmware verified on real hardware
+
+            ### Flashing instructions
+            ```bash
+            esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash 0x0 firmware-*.bin
