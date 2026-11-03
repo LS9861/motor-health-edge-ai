@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: Lint with ruff
+        run: ruff check src/ scripts/ --output-format=github
+
+      - name: Preprocess fixtures
+        env:
+          MHE_RAW_DIR: tests/fixtures
+        run: python src/training/preprocess.py
+
+      - name: Train 2 epochs on fixtures
+        env:
+          MHE_EPOCHS: "2"
+        run: python src/training/train.py
+
+      - name: Run smoke tests
+        run: pytest tests/ -v
+
+  build-firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build ESP32-C3 firmware
+        working-directory: src/inference
+        run: pio run
+
+      - name: Check firmware size (< 85% flash)
+        working-directory: src/inference
+        run: |
+          BIN=".pio/build/esp32-c3-devkitm-1/firmware.bin"
+          SIZE=$(stat -c%s "$BIN")
+          MAX=$((1310720 * 85 / 100))
+          echo "Firmware: $SIZE bytes / $MAX max"
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "❌ Firmware too large"
+            exit 1
+          fi
+          echo "✅ Firmware size OK"

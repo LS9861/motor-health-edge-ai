@@ -51,3 +51,131 @@ scripts/quantize_v3_int8.py
 # --- Larger ONNX artifacts (optional: keep, but decide) ---
 # models/onnx/*.onnx
 # !models/onnx/v3_export.onnx
+
+# Intermediate model artifacts (regenerable from .pt)
+models/onnx/
+models/tflite/float_export/
+
+Motor Health Edge AI structure
+Good — that clarifies main.cpp
+
+If main.cpp isn't in git status, then it's already committed and matches the last commit. Nothing to do with it. The state-machine WAITING feature we discussed was not applied — you're running the 5-channel version that produced 96.59% and works on hardware.
+
+That means:
+
+    ✅ main.cpp is clean (committed)
+
+    ❌ State-machine debouncing (Phase 7 Part B) is not in the code — it's still a future task
+
+    ❌ INVOKE_US measurement (Phase 7 Part A) is not in the code either
+
+That's fine. Both are still on the todo list. Nothing broken.
+What's actually in git status right now
+
+Based on your last paste:
+text
+
+Changes not staged for commit:
+  deleted:    src/deployment/generate_model_header.py
+
+Untracked files:
+  .github/
+  models/onnx/
+  models/tflite/float_export/
+  scripts/verify_v3_float_accuracy.py
+
+That's the full state. Here's what to do with each, exactly:
+1. deleted: src/deployment/generate_model_header.py
+
+The old location. Its replacement is scripts/generate_model_header.py (which is already committed). Stage the deletion so git records that the file was moved.
+2. .github/ — new folder
+
+Check its contents first:
+bash
+
+find .github -type f
+
+Paste the output. If it has a ci.yml, we commit it. If it's empty, we need to create the file first (I'll give it to you).
+3. models/onnx/ and models/tflite/float_export/
+
+Ignore these. Add to .gitignore. They're regenerable intermediates.
+4. scripts/verify_v3_float_accuracy.py
+
+We need to decide: commit or ignore. Run this first:
+bash
+
+head -30 scripts/verify_v3_float_accuracy.py
+
+Paste the output. If it's clean, we commit it. If it's debug junk, we ignore it.
+Right now — 3 quick commands
+
+Run these in Git Bash (you're already there) and paste the outputs:
+bash
+
+find .github -type f
+head -30 scripts/verify_v3_float_accuracy.py
+git log --oneline -3
+
+Three commands, three outputs. Then I'll give you:
+
+    Exact .gitignore additions
+
+    Exact git add list
+
+    Exact commit message
+
+Nothing else to do until I see those three outputs.
+((venv_py312) ) samba_loks@Samba:/mnt/f/All_AboutProject/motor-health-edge-ai$ head -30 scripts/verify_v3_float_accuracy.py
+import numpy as np
+import tensorflow as tf
+
+# 1. Load the model
+interpreter = tf.lite.Interpreter(model_path="F:/All_AboutProject/motor-health-edge-ai/models/tflite/v3_float.tflite")
+interpreter.allocate_tensors()
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# 2. Create a fake "Healthy" window based on your CSV (50 samples, 6 channels)
+window = np.zeros((50, 6), dtype=np.float32)
+window[:, 0] = -0.8  # ax
+window[:, 1] = 0.2   # ay
+window[:, 2] = 10.5  # az
+window[:, 3] = 180.0 # current
+window[:, 4] = 5.97  # voltage
+window[:, 5] = 306.0 # rpm
+
+# 3. Normalize using your NORM_MEAN and NORM_STD (Replace these with real values from norm_params.h)
+NORM_MEAN = np.array([-0.8, 0.2, 10.5, 180.0, 5.97, 306.0], dtype=np.float32)
+NORM_STD = np.array([0.1, 0.1, 0.5, 5.0, 0.01, 10.0], dtype=np.float32)
+
+window_norm = (window - NORM_MEAN) / NORM_STD
+
+# 4. Reshape to what the model expects: (1, 6, 50)
+# window_norm is (50, 6). Transpose to (6, 50) then add batch dim.
+input_data = np.transpose(window_norm, (1, 0)) # (6, 50)
+input_data = np.expand_dims(input_data, axis=0).astype(np.float32)
+Ignore verify_v3_float_accuracy.py — it's stale and broken
+
+Look at the script:
+
+    Hardcoded path: "F:/All_AboutProject/motor-health-edge-ai/models/tflite/v3_float.tflite" — won't work on CI, won't work on any other machine.
+
+    6 channels: np.zeros((50, 6)) — the old 6ch architecture.
+
+    Fake data: window[:, 0] = -0.8 — hand-crafted values, not real data.
+
+    Wrong normalization values: NORM_MEAN = [-0.8, 0.2, 10.5, 180.0, 5.97, 306.0] — not your real .npy values.
+
+    Default STDs: NORM_STD = [0.1, 0.1, 0.5, 5.0, 0.01, 10.0] — made up.
+
+This was scratch code from the 6-channel debugging session. It's not useful, it's wrong, and it will confuse anyone reading the repo.
+
+Decision: ignore it. Not delete (you may want to look at it later), but not commit.
+Do this: ignore the scratch file
+
+Open .gitignore, add at the end:
+gitignore
+
+# Scratch debugging scripts
+scripts/verify_v3_float_accuracy.py
