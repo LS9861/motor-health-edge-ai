@@ -179,3 +179,7 @@ gitignore
 
 # Scratch debugging scripts
 scripts/verify_v3_float_accuracy.py
+
+# Live test captures — never commit these, they regenerate on every run
+results/figures/live_*.png
+data/raw/*_live_*.csv
