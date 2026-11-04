@@ -43,7 +43,6 @@ from src.common.constants import (  # noqa: E402
     LABEL_COLORS,
     LABELS,
     LIVE_WINDOW_SAMPLES,
-    SAMPLE_HZ,
 )
 
 RAW_DIR = REPO_ROOT / "data" / "raw"
@@ -275,9 +274,12 @@ def main() -> None:
             line_rpm.set_data(x, np.asarray(buf_rpm))
             for ax in axes[:3]:
                 ax.set_xlim(0, max(n - 1, 1))
-            axes[0].relim(); axes[0].autoscale_view(scalex=False, scaley=True)
-            axes[1].relim(); axes[1].autoscale_view(scalex=False, scaley=True)
-            axes[2].relim(); axes[2].autoscale_view(scalex=False, scaley=True)
+            axes[0].relim();
+            axes[0].autoscale_view(scalex=False, scaley=True)
+            axes[1].relim();
+            axes[1].autoscale_view(scalex=False, scaley=True)
+            axes[2].relim();
+            axes[2].autoscale_view(scalex=False, scaley=True)
 
         if buf_s_h:
             xp = np.arange(len(buf_s_h))
@@ -285,7 +287,8 @@ def main() -> None:
             line_i.set_data(xp, np.asarray(buf_s_i))
             line_f.set_data(xp, np.asarray(buf_s_f))
             ax4.set_xlim(0, max(n - 1, 1))
-            ax4.relim(); ax4.autoscale_view(scalex=False, scaley=True)
+            ax4.relim();
+            ax4.autoscale_view(scalex=False, scaley=True)
 
             cls = state["last_class"]
             color = LABEL_COLORS.get(cls.lower(), "#333")
