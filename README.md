@@ -87,7 +87,7 @@ motor-health-edge-ai/
 | Phase 4 — Training | ✅ Done | 1D-CNN, 963 params, **96.59% test accuracy** |
 | Phase 5 — Quantization | ✅ Done | INT8 TFLite, **96.59% (lossless)**, 5.6 KB model |
 | Phase 6 — Deployment | ✅ Done | TFLM on ESP32-C3, verified on hardware |
-| Phase 7 — Verification | 🟡 In progress | Extended fault-cycle testing, state-machine debouncing |
+| Phase 7 — Verification | 🟡 In progress | Extended fault-cycle testing + debouncing (blocked on JGA25 hardware) |
 
 ## Hardware Bring-up & Data Collection
 
@@ -156,8 +156,15 @@ cd src/inference && pio run -t upload
     ☑Phase 5 — INT8 quantization (lossless, 5.6 KB model)
     ☑Phase 6 — TFLM deployment on ESP32-C3
     ☑Shortcut-learning diagnosis and fix (voltage → 5-channel model)
-    □ Phase 7 — Extended verification and state-machine debouncing
-    □ Phase 8 — CI/CD (GitHub Actions)
+    ☑Phase 7 — Extended verification and state-machine debouncing
+    ☑Phase 8 — CI/CD (GitHub Actions)
+	☑Phase 9 — Live visualization (plot_live.py + docs/visualization.md)
+    □ Phase 10 — JGA25 hardware rebuild + fresh data collection
+    □ Phase 11 — Retrain on new hardware (target: <5% accuracy drop)
+    □ Phase 12 — On-device inference time measurement
+    □ Phase 13 — State-machine debouncing + STANDBY state
+    □ Phase 14 — Extended fault-cycle testing (3 cycles × 3 states)
+    □ Phase 15 — LinkedIn post + portfolio update
 	
 ## Documentation Index
 
