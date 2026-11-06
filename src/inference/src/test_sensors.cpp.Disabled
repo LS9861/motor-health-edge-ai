@@ -1,0 +1,142 @@
+// src/inference/src/test_sensors.cpp
+// Standalone sensor test for JGA25-370 + ESP32-C3.
+// NO inference. NO CSV. Just prints 5 sensors + encoder RPM every second.
+// Pins: I2C SDA=0 SCL=1, L298N IN1=4 IN2=5, Encoder A=10 B=3
+// Encoder: 11 PPR x 30 gear = 330 CPR (A-phase rising edges)
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_INA228.h>
+#include "FastIMU.h"
+
+#define PIN_I2C_SDA 0
+#define PIN_I2C_SCL 1
+#define PIN_IN1 4
+#define PIN_IN2 5
+#define PIN_ENC_A 10
+#define PIN_ENC_B 3
+
+constexpr uint32_t SAMPLE_PERIOD_MS = 20; // 50 Hz
+constexpr int WINDOW_SIZE = 50;           // 1 second
+constexpr int N_CHANNELS = 5;
+constexpr float ENCODER_CPR = 330.0f; // 11 PPR x 30 gear, A-phase only
+constexpr float WINDOW_MS = (float)(WINDOW_SIZE * SAMPLE_PERIOD_MS);
+
+Adafruit_INA228 ina228;
+MPU6500 imu;
+calData calib = {0};
+
+volatile uint32_t pulses_A = 0;
+volatile uint32_t pulses_B = 0;
+void IRAM_ATTR onEncA()
+{
+    static uint32_t last_us = 0;
+    uint32_t now = micros();
+    if (now - last_us < 200)
+        return; // 200 us debounce -> 5 kHz max
+    last_us = now;
+    pulses_A++;
+}
+void IRAM_ATTR onEncB()
+{
+    static uint32_t last_us = 0;
+    uint32_t now = micros();
+    if (now - last_us < 200)
+        return;
+    last_us = now;
+    pulses_B++;
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    delay(1500);
+    Serial.println("\n=== SENSOR TEST ===");
+
+    pinMode(PIN_IN1, OUTPUT);
+    pinMode(PIN_IN2, OUTPUT);
+    digitalWrite(PIN_IN1, LOW);
+    digitalWrite(PIN_IN2, LOW);
+
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+    Wire.setClock(400000);
+
+    pinMode(PIN_ENC_A, INPUT_PULLUP);
+    pinMode(PIN_ENC_B, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(PIN_ENC_A), onEncA, RISING);
+    attachInterrupt(digitalPinToInterrupt(PIN_ENC_B), onEncB, RISING);
+
+    if (!ina228.begin())
+    {
+        Serial.println("ERROR: INA228 not found");
+        while (true)
+            delay(1000);
+    }
+    ina228.setShunt(0.015f, 3.0f);
+    Serial.println("INA228 OK");
+
+    if (imu.init(calib, 0x68) != 0)
+    {
+        Serial.println("ERROR: MPU6500 init failed");
+        while (true)
+            delay(1000);
+    }
+    imu.setAccelRange(8);
+    Serial.println("MPU6500 OK");
+
+    // Drive motor forward at full speed
+    digitalWrite(PIN_IN1, HIGH);
+    digitalWrite(PIN_IN2, LOW);
+    Serial.println("# Motor ON");
+
+    Serial.println("timestamp_ms, ax, ay, az, current_mA, voltage_V, pulses_A, pulses_B, rpm");
+}
+
+void loop()
+{
+    uint32_t now = millis();
+
+    static uint32_t last_sample = 0;
+    static float sum_ax = 0, sum_ay = 0, sum_az = 0;
+    static float sum_cur = 0, sum_volt = 0;
+    static int sample_count = 0;
+
+    if (now - last_sample >= SAMPLE_PERIOD_MS)
+    {
+        last_sample = now;
+
+        imu.update();
+        AccelData acc;
+        imu.getAccel(&acc);
+        sum_ax += acc.accelX * 9.81f;
+        sum_ay += acc.accelY * 9.81f;
+        sum_az += acc.accelZ * 9.81f;
+        sum_cur += ina228.getCurrent_mA();
+        sum_volt += ina228.getBusVoltage_V();
+        sample_count++;
+
+        if (sample_count >= WINDOW_SIZE)
+        {
+            noInterrupts();
+            uint32_t pa = pulses_A;
+            uint32_t pb = pulses_B;
+            pulses_A = 0;
+            pulses_B = 0;
+            interrupts();
+
+            float ax = sum_ax / sample_count;
+            float ay = sum_ay / sample_count;
+            float az = sum_az / sample_count;
+            float cur = sum_cur / sample_count;
+            float volt = sum_volt / sample_count;
+            float rpm = (pa * (60000.0f / WINDOW_MS)) / ENCODER_CPR;
+
+            Serial.printf("%lu,%.3f,%.3f,%.3f,%.1f,%.3f,%lu,%lu,%.1f\n",
+                          now, ax, ay, az, cur, volt, pa, pb, rpm);
+
+            sum_ax = sum_ay = sum_az = 0;
+            sum_cur = sum_volt = 0;
+            sample_count = 0;
+        }
+    }
+}

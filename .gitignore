@@ -183,3 +183,8 @@ scripts/verify_v3_float_accuracy.py
 # Live test captures — never commit these, they regenerate on every run
 results/figures/live_*.png
 data/raw/*_live_*.csv
+
+# Raw sensor captures — collected locally, not committed
+data/raw/jga25/
+data/raw/*.csv
+data/raw/*/*.csv
