@@ -1,25 +1,28 @@
 // src/inference/include/norm_params.h
+//
+// Auto-generated. DO NOT EDIT. Regenerate with:
+//   python scripts/generate_norm_params.py
+//
+// Source: data/processed/train_mean.npy, train_std.npy
+// Channels: [ax, ay, az, current_mA, rpm]  (voltage intentionally excluded)
 
 #ifndef NORM_PARAMS_H
 #define NORM_PARAMS_H
 
-// Generated from data/processed/train_mean.npy and train_std.npy
-// Channels: [ax, ay, az, current_mA, voltage_v, rpm]
-
-static const float NORM_MEAN[6] = {
-    -0.8520f,   // ax
-     0.1577f,   // ay
-    10.5465f,   // az
-   114.8340f,  // current_mA
-   177.0138f   // rpm
+static const float NORM_MEAN[5] = {
+    -2.017085f,  // ax
+    0.693677f,  // ay
+    10.399394f,  // az
+    189.819397f,  // current_mA
+    265.271576f,  // rpm
 };
 
-static const float NORM_STD[6] = {
-    0.1823f,   // ax
-    0.4800f,   // ay
-    0.3332f,   // az
-   75.6060f,   // current_mA
-  152.3184f    // rpm
+static const float NORM_STD[5] = {
+    0.317312f,  // ax
+    0.304481f,  // ay
+    0.258245f,  // az
+    88.526390f,  // current_mA
+    12.894553f,  // rpm
 };
 
-#endif
+#endif  // NORM_PARAMS_H

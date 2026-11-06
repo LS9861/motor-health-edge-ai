@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "src" / "training"))
 from model import MotorCNN1D
 
 # NOTE: new checkpoint name (5-channel)
-CKPT = REPO_ROOT / "models" / "checkpoints" / "v3_5ch_flat.pt"
+CKPT = REPO_ROOT / "models" / "checkpoints" / "v3_5ch_flat_jga25.pt"
 ONNX_OUT = REPO_ROOT / "models" / "onnx" / "v3_export.onnx"
 TFLITE_DIR = REPO_ROOT / "models" / "tflite"
 PROCESSED = REPO_ROOT / "data" / "processed"
@@ -37,13 +37,26 @@ def get_tflite_shape(interp):
     return tuple(d.tolist())
 
 
-def run_tflite(interp, input_array):
-    """Feeds input_array matching the model's expected shape."""
+def run_tflite_float(interp, input_array):
+    """Feed float32 input, get float32 output. For float models only."""
     inp = interp.get_input_details()[0]
     out = interp.get_output_details()[0]
     interp.set_tensor(inp['index'], input_array.astype(np.float32))
     interp.invoke()
     return interp.get_tensor(out['index'])[0]
+
+
+def predict_int8(interp, inp, out, x_float):
+    """Manually quantize input, run, dequantize output. For int8-in/int8-out models."""
+    iscale, izero = inp['quantization']
+    oscale, ozero = out['quantization']
+    x_int8 = np.clip(
+        np.round(x_float / iscale + izero), -128, 127,
+    ).astype(np.int8)
+    interp.set_tensor(inp['index'], x_int8)
+    interp.invoke()
+    y_raw = interp.get_tensor(out['index'])[0]
+    return (y_raw.astype(np.float32) - ozero) * oscale
 
 
 # ============================================================
@@ -182,7 +195,7 @@ else:
     print(f"❌ Unexpected input shape: {shape}")
     sys.exit(1)
 
-tflite_logits = run_tflite(interp, input_data)
+tflite_logits = run_tflite_float(interp, input_data)
 diff = np.abs(tflite_logits - ref_logits).max()
 print(f"TFLite logits : {tflite_logits.round(4)}")
 print(f"max diff      : {diff:.6f}")
@@ -197,17 +210,18 @@ if diff > 1e-2:
 print("✅ TFLite float matches PyTorch")
 
 # ============================================================
-# 7. INT8 quantization
+# 7. INT8 quantization (pure int8 in/out — no float wrapper)
 # ============================================================
 print("\n" + "=" * 60)
 print("STEP 7: INT8 quantization")
 print("=" * 60)
 
-# Build representative dataset in TFLite's expected format — 5 channels
+# Representative dataset must match model's expected input layout.
+# Use ALL training windows (all 3 classes) — not just the first 200.
 if shape == (1, 50, 5):
-    rep_data = X_train[:200]  # already (N, 50, 5)
+    rep_data = X_train
 else:
-    rep_data = np.transpose(X_train[:200], (0, 2, 1))  # (N, 5, 50)
+    rep_data = np.transpose(X_train, (0, 2, 1))
 
 
 def rep_gen():
@@ -219,8 +233,9 @@ converter = tf.lite.TFLiteConverter.from_saved_model(str(tflite_dir))
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.representative_dataset = rep_gen
 converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-converter.inference_input_type = tf.float32
-converter.inference_output_type = tf.float32
+# Pure int8 in/out: no float<->int8 wrapper ops that can be misconfigured
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
 int8_bytes = converter.convert()
 
 final_int8 = TFLITE_DIR / "v3_int8.tflite"
@@ -236,11 +251,15 @@ print("=" * 60)
 
 interp8 = tf.lite.Interpreter(model_path=str(final_int8))
 interp8.allocate_tensors()
-shape8 = get_tflite_shape(interp8)
+inp8 = interp8.get_input_details()[0]
+out8 = interp8.get_output_details()[0]
+shape8 = tuple(inp8['shape'].tolist())
 print(f"INT8 input shape: {shape8}")
+print(f"INT8 input dtype: {inp8['dtype'].__name__}")
+print(f"INT8 output dtype: {out8['dtype'].__name__}")
 
-input8 = healthy_ntc if shape8 == (1, 50, 5) else healthy_nct
-int8_logits = run_tflite(interp8, input8)
+input8_float = healthy_ntc if shape8 == (1, 50, 5) else healthy_nct
+int8_logits = predict_int8(interp8, inp8, out8, input8_float)
 diff8 = np.abs(int8_logits - ref_logits).max()
 print(f"INT8 logits : {int8_logits.round(4)}")
 print(f"max diff    : {diff8:.6f}")
@@ -268,7 +287,7 @@ else:
 
 correct = 0
 for i in range(len(X_test_in)):
-    out = run_tflite(interp8, X_test_in[i:i + 1])
+    out = predict_int8(interp8, inp8, out8, X_test_in[i:i + 1])
     if out.argmax() == y_test[i]:
         correct += 1
 

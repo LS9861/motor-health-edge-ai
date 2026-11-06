@@ -194,3 +194,10 @@ models/checkpoints/*.pt
 
 # Training logs — transient
 training_log_*.txt
+
+# Transient build artifacts and local backups
+*.log
+export_run.log
+*.bak
+src/inference/include/*_TT.h.bak
+models/tflite/*_TT.tflite

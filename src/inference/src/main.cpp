@@ -259,12 +259,15 @@ void loop()
     }
 
     // ---------- Invoke ----------
+    uint32_t t_infer_start_us = micros();
     if (interpreter->Invoke() != kTfLiteOk)
     {
         Serial.println("ERROR: Invoke failed");
         window_idx = 0;
         return;
     }
+    uint32_t t_infer_end_us = micros();
+    Serial.printf("# INVOKE_US,%lu\n", t_infer_end_us - t_infer_start_us);
 
     // ---------- Read output ----------
     float *output_f32 = (float *)output_tensor->data.raw;
