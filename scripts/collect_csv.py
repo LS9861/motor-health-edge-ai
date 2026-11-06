@@ -28,7 +28,6 @@ import argparse
 import csv
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import serial
@@ -91,7 +90,6 @@ def main() -> None:
     print(f"\n✅ Opened {port} @ {FIRMWARE_BAUD}")
     print(f"✅ Target file: {out_csv}")
 
-    # Wait for # COLLECTING marker (firmware prints it once after 25s warm-up)
     # Firmware is ready when we see EITHER '# COLLECTING' OR a valid data row.
     # (The marker is printed once at boot; if the script opens the port after
     # that moment, we'll be reading data rows already — that's also ready.)
@@ -188,7 +186,7 @@ def main() -> None:
               f"print(pd.read_csv('{out_csv}').describe())\"")
     else:
         print(f"\n✅ Capture looks complete ({rows_written} rows).")
-        print(f"\n👉 Next: flip motor OFF, wait 5 s, then run the next capture.")
+        print("\n👉 Next: flip motor OFF, wait 5 s, then run the next capture.")
 
 
 if __name__ == "__main__":
