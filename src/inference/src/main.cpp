@@ -2,7 +2,7 @@
 //
 // Phase 6 — 5-channel model (no voltage). Vibration + current + RPM only.
 // Motor cycle: 30s ON → 10s OFF → repeat.
-// Model: v3_int8.tflite (5-channel INT8, float32 I/O).
+// Model: v3_int8.tflite (5-channel INT8, int8 I/O).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,7 +28,7 @@
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;
 constexpr int WINDOW_SIZE = 50;
 constexpr int N_CHANNELS = 5; // ← 5, no voltage
-constexpr int HOLES_PER_REV = 20;
+constexpr int HOLES_PER_REV = 330;
 constexpr float WINDOW_MS = (float)(WINDOW_SIZE * SAMPLE_PERIOD_MS);
 
 // ---------- Motor cycle ----------
@@ -49,13 +49,17 @@ Adafruit_INA228 ina228;
 MPU6500 imu;
 calData calib = {0};
 
-// ---------- IR with 1 ms debounce ----------
+// ---------- IR pulse counter ----------
+// JGA25-370 encoder: 11 PPR x 30 gear = 330 pulses per output-shaft revolution.
+// At 266 RPM, pulse interval is ~682 us. Debounce must be BELOW that interval,
+// otherwise we lose pulses and report half-speed. 200 us filters real noise
+// while preserving all 1465 pulses/sec at full speed.
 volatile uint32_t pulse_count = 0;
 void IRAM_ATTR onIrPulse()
 {
     static uint32_t last_us = 0;
     uint32_t now_us = micros();
-    if (now_us - last_us < 1000)
+    if (now_us - last_us < 200)
         return;
     last_us = now_us;
     pulse_count++;
@@ -247,14 +251,21 @@ void loop()
     Serial.print(" rpm=");
     Serial.println(window[0][4], 0);
 
-    // ---------- Normalize and fill tensor ----------
-    float *input_f32 = (float *)input_tensor->data.raw;
+    // ---------- Normalize, then quantize to int8 ----------
+    int8_t *input_i8 = (int8_t *)input_tensor->data.int8;
+    const float in_scale = input_tensor->params.scale;
+    const int32_t in_zero = input_tensor->params.zero_point;
     for (int c = 0; c < N_CHANNELS; c++)
     {
         for (int t = 0; t < WINDOW_SIZE; t++)
         {
-            input_f32[c * WINDOW_SIZE + t] =
-                (window[t][c] - NORM_MEAN[c]) / NORM_STD[c];
+            float norm = (window[t][c] - NORM_MEAN[c]) / NORM_STD[c];
+            int32_t q = (int32_t)roundf(norm / in_scale) + in_zero;
+            if (q < -128)
+                q = -128;
+            if (q > 127)
+                q = 127;
+            input_i8[c * WINDOW_SIZE + t] = (int8_t)q;
         }
     }
 
@@ -269,9 +280,15 @@ void loop()
     uint32_t t_infer_end_us = micros();
     Serial.printf("# INVOKE_US,%lu\n", t_infer_end_us - t_infer_start_us);
 
-    // ---------- Read output ----------
-    float *output_f32 = (float *)output_tensor->data.raw;
-    float logits[3] = {output_f32[0], output_f32[1], output_f32[2]};
+    // ---------- Read int8 output, dequantize to float ----------
+    int8_t *output_i8 = (int8_t *)output_tensor->data.int8;
+    const float out_scale = output_tensor->params.scale;
+    const int32_t out_zero = output_tensor->params.zero_point;
+    float logits[3] = {
+        (float)(output_i8[0] - out_zero) * out_scale,
+        (float)(output_i8[1] - out_zero) * out_scale,
+        (float)(output_i8[2] - out_zero) * out_scale,
+    };
 
     const char *labels[] = {"HEALTHY", "IMBALANCED", "FRICTION"};
     int best = 0;

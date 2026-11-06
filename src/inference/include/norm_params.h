@@ -10,19 +10,19 @@
 #define NORM_PARAMS_H
 
 static const float NORM_MEAN[5] = {
-    -2.017085f,  // ax
-    0.693677f,  // ay
-    10.399394f,  // az
-    189.819397f,  // current_mA
-    265.271576f,  // rpm
+    -1.086705f,  // ax
+    -0.004128f,  // ay
+    10.497450f,  // az
+    174.598969f,  // current_mA
+    290.001923f,  // rpm
 };
 
 static const float NORM_STD[5] = {
-    0.317312f,  // ax
-    0.304481f,  // ay
-    0.258245f,  // az
-    88.526390f,  // current_mA
-    12.894553f,  // rpm
+    0.305561f,  // ax
+    0.345472f,  // ay
+    0.146230f,  // az
+    68.693039f,  // current_mA
+    9.909420f,  // rpm
 };
 
 #endif  // NORM_PARAMS_H
