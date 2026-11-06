@@ -137,7 +137,7 @@ def main():
             print(f"Early stopping at epoch {epoch}.")
             break
 
-    ckpt_path = CKPT_DIR / "v3_5ch_flat.pt"
+    ckpt_path = CKPT_DIR / "v3_5ch_flat_jga25.pt"
     torch.save(best_state, ckpt_path)
     print(f"\nSaved checkpoint: {ckpt_path}")
 
@@ -157,7 +157,7 @@ def main():
     plot_loss(history, FIG_DIR / "v3_loss_curve.png")
 
     metrics = {
-        "version": "v3_5ch_flat",
+        "version": "v3_5ch_flat_jga25",
         "accuracy": float(acc),
         "per_class_f1": {k: float(v["f1-score"]) for k, v in report.items() if k in LABELS},
         "confusion_matrix": cm.tolist(),

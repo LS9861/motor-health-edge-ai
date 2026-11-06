@@ -188,3 +188,9 @@ data/raw/*_live_*.csv
 data/raw/jga25/
 data/raw/*.csv
 data/raw/*/*.csv
+
+# Model checkpoints — regenerable
+models/checkpoints/*.pt
+
+# Training logs — transient
+training_log_*.txt
