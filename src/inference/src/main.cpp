@@ -49,11 +49,7 @@ Adafruit_INA228 ina228;
 MPU6500 imu;
 calData calib = {0};
 
-// ---------- IR pulse counter ----------
-// JGA25-370 encoder: 11 PPR x 30 gear = 330 pulses per output-shaft revolution.
-// At 266 RPM, pulse interval is ~682 us. Debounce must be BELOW that interval,
-// otherwise we lose pulses and report half-speed. 200 us filters real noise
-// while preserving all 1465 pulses/sec at full speed.
+// ---------- IR pulse counter (200us debounce) ----------
 volatile uint32_t pulse_count = 0;
 void IRAM_ATTR onIrPulse()
 {
@@ -250,6 +246,30 @@ void loop()
     Serial.print(window[0][3], 1);
     Serial.print(" rpm=");
     Serial.println(window[0][4], 0);
+
+    // ---------- STANDBY gate: skip inference if motor is off ----------
+    // Fast-off detection: RPM < 10 AND current < 50 mA for even 1 window
+    // triggers STANDBY immediately (motor is mechanical, no glitches expected).
+    static int on_count = 0; // counts consecutive running windows
+    const bool motor_off = (rpm < 10.0f) && (window[0][3] < 50.0f);
+    if (motor_off)
+    {
+        on_count = 0;
+        Serial.printf("%lu,STANDBY,0,0,0,%.0f\n", now, rpm);
+        window_idx = 0;
+        return;
+    }
+    else
+    {
+        on_count++;
+        // Warm-up: require 2 consecutive running windows before resuming inference
+        if (on_count < 2)
+        {
+            Serial.printf("%lu,WAITING,0,0,0,%.0f\n", now, rpm);
+            window_idx = 0;
+            return;
+        }
+    }
 
     // ---------- Normalize, then quantize to int8 ----------
     int8_t *input_i8 = (int8_t *)input_tensor->data.int8;

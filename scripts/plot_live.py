@@ -52,8 +52,7 @@ FIG_DIR = REPO_ROOT / "results" / "figures"
 FIRMWARE_BAUD = 115200
 
 # Data-line class tokens (uppercase) -> canonical lowercase label
-FIRMWARE_CLASSES = {"HEALTHY", "IMBALANCED", "FRICTION", "WAITING"}
-
+FIRMWARE_CLASSES = {"HEALTHY", "IMBALANCED", "FRICTION", "WAITING", "STANDBY"}
 # Data line has 6 comma-separated fields
 DATA_FIELDS = ["timestamp_ms", "class", "s_healthy", "s_imbalanced", "s_friction", "rpm"]
 N_DATA_FIELDS = len(DATA_FIELDS)
@@ -291,7 +290,7 @@ def main() -> None:
             ax4.autoscale_view(scalex=False, scaley=True)
 
             cls = state["last_class"]
-            color = LABEL_COLORS.get(cls.lower(), "#333")
+            color = LABEL_COLORS.get(cls.lower(), "#888")
             class_text.set_text(f"predicted: {cls}   (rpm {state['last_rpm']:.0f})")
             class_text.set_color(color)
             fig.suptitle(
