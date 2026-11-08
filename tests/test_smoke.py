@@ -42,7 +42,9 @@ def test_preprocess_fixtures():
     X_test = np.load(REPO_ROOT / "data/processed/X_test.npy")
 
     # 3 classes × 7 windows each = 21 windows
-    assert X_train.shape == (21, 50, 5), f"Unexpected X_train shape: {X_train.shape}"
+            # 3 classes × 7 windows × 3 augmentation copies = 63 windows
+        # (augmentation: original + 10% amplified + 10% attenuated)
+    assert X_train.shape == (63, 50, 5), f"Unexpected X_train shape: {X_train.shape}"
     assert X_test.shape == (21, 50, 5), f"Unexpected X_test shape: {X_test.shape}"
 
     assert not np.isnan(X_train).any(), "X_train contains NaN"
