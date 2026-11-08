@@ -71,7 +71,7 @@ def create_windows(df: pd.DataFrame, is_train: bool = False):
     label_idx = LABEL_MAP[df["label"].iloc[0]]
 
     X, y = [], []
-    n_feature_ch = len(FEATURE_COLS)
+  
 
     for start in range(0, len(data) - WINDOW_SIZE + 1, STEP_SIZE):
         window_feat = data[start : start + WINDOW_SIZE]  # (50, n_feature_ch)

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Live inference monitor for the motor-health-edge-ai rig (v7).
 
-Changes vs v6:
-  - All 5 subplots share the same x-axis (time in seconds/windows).
-  - The state timeline scrolls with the sensor data (rolling window).
-  - Can now visually correlate a fault spike in the timeline with the
-    exact vibration/current sample that caused it.
+Subplots:
+  1. Vibration magnitude
+  2. Motor current
+  3. Supply voltage (from INA228 via # RAW debug line)
+  4. Motor speed (RPM)
+  5. State timeline (colored strip showing every confirmed state change)
+
+All multi-statement lines have been expanded for ruff compliance (E701, E702, E703).
 """
 from __future__ import annotations
 
@@ -22,12 +25,11 @@ import numpy as np
 import serial
 import serial.tools.list_ports
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.common.constants import LABEL_COLORS, LABELS
+from src.common.constants import LABEL_COLORS, LABELS, LIVE_WINDOW_SAMPLES
 
 RAW_DIR = REPO_ROOT / "data" / "raw" / "live"
 FIG_DIR = REPO_ROOT / "results" / "figures"
@@ -36,9 +38,6 @@ FIRMWARE_BAUD = 115200
 FIRMWARE_CLASSES = {"HEALTHY", "IMBALANCED", "FRICTION", "WAITING", "STANDBY"}
 DATA_FIELDS = ["timestamp_ms", "class", "s_healthy", "s_imbalanced", "s_friction", "rpm"]
 N_DATA_FIELDS = len(DATA_FIELDS)
-
-# How many windows to show on the x-axis (e.g., 200 = ~3.3 mins)
-HISTORY_WINDOWS = 200
 
 
 def choose_port() -> str:
@@ -99,8 +98,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("label", choices=LABELS)
     ap.add_argument("--port")
-    ap.add_argument("--window", type=int, default=HISTORY_WINDOWS,
-                    help="Number of 1-second windows to show on all plots")
+    ap.add_argument("--window", type=int, default=LIVE_WINDOW_SAMPLES)
     ap.add_argument("--no-save", action="store_true")
     ap.add_argument("--refresh-ms", type=int, default=500)
     args = ap.parse_args()
@@ -114,16 +112,16 @@ def main() -> None:
 
     print(f"\n✅ Opening {port} @ {FIRMWARE_BAUD}")
     print(f"✅ CSV: {out_csv}")
-    print(f"✅ Showing last {args.window} windows (~{args.window}s)")
 
-    # Rollings buffers
     n = args.window
     buf_mag = deque(maxlen=n)
     buf_cur = deque(maxlen=n)
     buf_vol = deque(maxlen=n)
     buf_rpm = deque(maxlen=n)
-    # Timeline buffer stores the class STRING for the last N windows
-    buf_class = deque(maxlen=n)
+    buf_s_h = deque(maxlen=n)
+    buf_s_i = deque(maxlen=n)
+    buf_s_f = deque(maxlen=n)
+    state_history = []
     state = {"raw": 0, "pred": 0, "last_class": "WAITING"}
 
     try:
@@ -137,8 +135,7 @@ def main() -> None:
     fh.flush()
 
     matplotlib.rcParams["toolbar"] = "None"
-    # Share X axis across ALL 5 subplots!
-    fig, axes = plt.subplots(5, 1, figsize=(12, 10), sharex=True)
+    fig, axes = plt.subplots(5, 1, figsize=(12, 10), sharex=False)
     fig.suptitle(f"Live inference monitor — {args.label}", fontsize=12)
 
     color_map = {
@@ -150,51 +147,34 @@ def main() -> None:
     }
 
     (line_mag,) = axes[0].plot([], [], lw=0.9, color="#1f77b4", marker=".")
-    axes[0].set_ylabel("|a| (m/s²)");
+    axes[0].set_ylabel("|a| (m/s²)")
     axes[0].set_title("Vibration magnitude")
     axes[0].grid(alpha=0.3)
 
     (line_cur,) = axes[1].plot([], [], lw=0.9, color="#ff7f0e", marker=".")
-    axes[1].set_ylabel("Current (mA)");
+    axes[1].set_ylabel("Current (mA)")
     axes[1].set_title("Motor current")
     axes[1].grid(alpha=0.3)
 
     (line_vol,) = axes[2].plot([], [], lw=0.9, color="#2ca02c", marker=".")
-    axes[2].set_ylabel("Voltage (V)"); 
+    axes[2].set_ylabel("Voltage (V)")
     axes[2].set_title("Supply voltage")
     axes[2].grid(alpha=0.3)
 
     (line_rpm,) = axes[3].plot([], [], lw=0.9, color="#9467bd", marker=".")
-    axes[3].set_ylabel("RPM");
+    axes[3].set_ylabel("RPM")
     axes[3].set_title("Motor speed")
     axes[3].grid(alpha=0.3)
 
-    # Subplot 5: state timeline
     axes[4].set_ylim(0, 1)
     axes[4].set_yticks([])
     axes[4].set_xlabel("window index (1 s each)")
-    axes[4].set_title("State timeline (aligned with sensor plots above)")
+    axes[4].set_title("State timeline")
     axes[4].grid(alpha=0.3, axis="x")
-
-    # Legend for timeline
-    legend_handles = [
-        Patch(facecolor=color_map["HEALTHY"], label="HEALTHY"),
-        Patch(facecolor=color_map["IMBALANCED"], label="IMBALANCED"),
-        Patch(facecolor=color_map["FRICTION"], label="FRICTION"),
-        Patch(facecolor=color_map["WAITING"], label="WAITING"),
-        Patch(facecolor=color_map["STANDBY"], label="STANDBY"),
-    ]
-    axes[4].legend(handles=legend_handles, loc="upper right", ncol=5, fontsize=8, framealpha=0.95)
-
-    # Status text
-    status_text = axes[4].text(
-        0.01, 0.85, "", transform=axes[4].transAxes,
-        ha="left", va="top", fontsize=11, fontweight="bold",
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#666", alpha=0.95),
-    )
 
     for ax in axes[:4]:
         ax.set_xlabel("windows (1 s each)")
+    plt.tight_layout()
 
     def update(_frame):
         for _ in range(500):
@@ -224,9 +204,16 @@ def main() -> None:
                     f"{buf_vol[-1] if buf_vol else 0.0:.2f}",
                     args.label,
                 ])
-                buf_class.append(p["class"])
+                buf_s_h.append(p["s_healthy"])
+                buf_s_i.append(p["s_imbalanced"])
+                buf_s_f.append(p["s_friction"])
                 state["pred"] += 1
-                state["last_class"] = p["class"]
+
+                if p["class"] != state["last_class"]:
+                    state_history.append((state["pred"] - 1, p["class"]))
+                    state["last_class"] = p["class"]
+                elif not state_history:
+                    state_history.append((0, p["class"]))
                 continue
 
             if raw.startswith("#"):
@@ -235,60 +222,56 @@ def main() -> None:
         if state["raw"] or state["pred"]:
             fh.flush()
 
-        # Redraw all data plots
         if buf_mag:
-            # Align X-axis: if we have N samples, X goes from 0 to N-1
-            # For the timeline, we need to align the class boxes with the same X.
             x = np.arange(len(buf_mag))
             line_mag.set_data(x, np.asarray(buf_mag))
             line_cur.set_data(x, np.asarray(buf_cur))
             line_vol.set_data(x, np.asarray(buf_vol))
             line_rpm.set_data(x, np.asarray(buf_rpm))
-            
-            # Set X lim for all axes to the current length of data
-            # Note: Because `sharex=True`, setting it on axes[0] affects all.
-            axes[0].set_xlim(0, max(n - 1, 1))
-            
-            axes[0].relim();
+            for ax in axes[:4]:
+                ax.set_xlim(0, max(n - 1, 1))
+            axes[0].relim()
             axes[0].autoscale_view(scalex=False, scaley=True)
-            axes[1].relim();
+            axes[1].relim()
             axes[1].autoscale_view(scalex=False, scaley=True)
-            axes[2].relim(); 
+            axes[2].relim()
             axes[2].autoscale_view(scalex=False, scaley=True)
-            axes[3].relim();
+            axes[3].relim()
             axes[3].autoscale_view(scalex=False, scaley=True)
 
-        # Redraw state timeline
-        if len(buf_class) > 0:
-            # Clear old bars
-            for patch in axes[4].patches:
-                patch.remove()
-                
-            # Draw new bars aligned with X-axis
-            # (We iterate over the buffer and draw a colored rectangle for each)
-            x_start = 0
-            current_cls = buf_class[0]
-            for i in range(1, len(buf_class)):
-                if buf_class[i] != current_cls:
-                    # Draw block for the previous class
-                    width = i - x_start
-                    axes[4].barh(0.5, width=width, left=x_start, height=0.7,
-                                 color=color_map.get(current_cls, "#888888"))
-                    x_start = i
-                    current_cls = buf_class[i]
-            
-            # Draw the last block
-            width = len(buf_class) - x_start
-            axes[4].barh(0.5, width=width, left=x_start, height=0.7,
-                         color=color_map.get(current_cls, "#888888"))
+        if state["pred"] > 0 and state_history:
+            axes[4].clear()
+            axes[4].set_ylim(0, 1)
+            axes[4].set_yticks([])
+            axes[4].set_xlabel("window index (1 s each)")
+            axes[4].set_title("State timeline")
+            axes[4].grid(alpha=0.3, axis="x")
 
-            # Update status text
-            cls = state["last_class"]
-            color = color_map.get(cls, "#333")
-            status_text.set_text(f"Now: {cls}")
-            status_text.set_color(color)
+            for i, (start_idx, cls) in enumerate(state_history):
+                if i + 1 < len(state_history):
+                    end_idx = state_history[i + 1][0]
+                else:
+                    end_idx = state["pred"]
+                width = max(end_idx - start_idx, 1)
+                axes[4].barh(
+                    0.5, width=width, left=start_idx, height=0.7,
+                    color=color_map.get(cls, "#888888"),
+                )
 
-        # Suptitle
+            axes[4].set_xlim(0, max(state["pred"], 30))
+
+            current_cls = state["last_class"]
+            last_change_idx = state_history[-1][0]
+            duration = state["pred"] - last_change_idx
+            axes[4].text(
+                0.01, 0.85,
+                f"Now: {current_cls}  (for {duration}s)",
+                transform=axes[4].transAxes,
+                ha="left", va="top", fontsize=11, fontweight="bold",
+                color=color_map.get(current_cls, "#333"),
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#666", alpha=0.95),
+            )
+
         cls = state["last_class"]
         color = color_map.get(cls, "#333")
         fig.suptitle(
@@ -306,11 +289,15 @@ def main() -> None:
         pass
     finally:
         print("\n\n🛑 Stopping...")
-        try: ser.close()
-        except Exception: pass
-        try: fh.flush();
-        fh.close()
-        except Exception: pass
+        try:
+            ser.close()
+        except Exception:
+            pass
+        try:
+            fh.flush()
+            fh.close()
+        except Exception:
+            pass
         print(f"💾 CSV: {out_csv}  ({state['pred']} predictions, {state['raw']} raw)")
         if not args.no_save and (state["pred"] or state["raw"]):
             try:
