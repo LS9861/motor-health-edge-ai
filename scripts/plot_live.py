@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Live inference monitor for the motor-health-edge-ai rig (v7).
-
-Subplots:
-  1. Vibration magnitude
-  2. Motor current
-  3. Supply voltage (from INA228 via # RAW debug line)
-  4. Motor speed (RPM)
-  5. State timeline (colored strip showing every confirmed state change)
-
-All multi-statement lines have been expanded for ruff compliance (E701, E702, E703).
-"""
+"""Live inference monitor for the motor-health-edge-ai rig (v8)."""
 from __future__ import annotations
 
 import argparse
@@ -25,6 +15,7 @@ import numpy as np
 import serial
 import serial.tools.list_ports
 from matplotlib.animation import FuncAnimation
+from matplotlib.patches import Patch  # <-- ADDED for legend
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -121,8 +112,10 @@ def main() -> None:
     buf_s_h = deque(maxlen=n)
     buf_s_i = deque(maxlen=n)
     buf_s_f = deque(maxlen=n)
-    state_history = []
-    state = {"raw": 0, "pred": 0, "last_class": "WAITING"}
+
+    timeline_x = []
+    timeline_class = []
+    state = {"raw": 0, "pred": 0, "last_class": "WAITING", "current_class": "WAITING"}
 
     try:
         ser = serial.Serial(port, FIRMWARE_BAUD, timeout=0.05)
@@ -146,6 +139,7 @@ def main() -> None:
         "STANDBY": "#333333",
     }
 
+    # Subplots 1-4
     (line_mag,) = axes[0].plot([], [], lw=0.9, color="#1f77b4", marker=".")
     axes[0].set_ylabel("|a| (m/s²)")
     axes[0].set_title("Vibration magnitude")
@@ -166,14 +160,27 @@ def main() -> None:
     axes[3].set_title("Motor speed")
     axes[3].grid(alpha=0.3)
 
+    for ax in axes[:4]:
+        ax.set_xlabel("windows (1 s each)")
+
+    # Subplot 5: State timeline
     axes[4].set_ylim(0, 1)
     axes[4].set_yticks([])
     axes[4].set_xlabel("window index (1 s each)")
     axes[4].set_title("State timeline")
     axes[4].grid(alpha=0.3, axis="x")
+    axes[4].set_xlim(0, n)
 
-    for ax in axes[:4]:
-        ax.set_xlabel("windows (1 s each)")
+    # Add a fixed legend for the states
+    legend_elements = [
+        Patch(facecolor=color_map["HEALTHY"], label="HEALTHY"),
+        Patch(facecolor=color_map["IMBALANCED"], label="IMBALANCED"),
+        Patch(facecolor=color_map["FRICTION"], label="FRICTION"),
+        Patch(facecolor=color_map["WAITING"], label="WAITING"),
+        Patch(facecolor=color_map["STANDBY"], label="STANDBY"),
+    ]
+    axes[4].legend(handles=legend_elements, loc="upper right", ncol=5, fontsize=9, framealpha=0.9)
+
     plt.tight_layout()
 
     def update(_frame):
@@ -210,10 +217,10 @@ def main() -> None:
                 state["pred"] += 1
 
                 if p["class"] != state["last_class"]:
-                    state_history.append((state["pred"] - 1, p["class"]))
+                    timeline_x.append(state["pred"])
+                    timeline_class.append(p["class"])
                     state["last_class"] = p["class"]
-                elif not state_history:
-                    state_history.append((0, p["class"]))
+                state["current_class"] = p["class"]
                 continue
 
             if raw.startswith("#"):
@@ -239,40 +246,49 @@ def main() -> None:
             axes[3].relim()
             axes[3].autoscale_view(scalex=False, scaley=True)
 
-        if state["pred"] > 0 and state_history:
-            axes[4].clear()
-            axes[4].set_ylim(0, 1)
-            axes[4].set_yticks([])
-            axes[4].set_xlabel("window index (1 s each)")
-            axes[4].set_title("State timeline")
-            axes[4].grid(alpha=0.3, axis="x")
+        axes[4].clear()
+        axes[4].set_ylim(0, 1)
+        axes[4].set_yticks([])
+        axes[4].set_xlabel("window index (1 s each)")
+        axes[4].set_title("State timeline")
+        axes[4].grid(alpha=0.3, axis="x")
+        axes[4].legend(handles=legend_elements, loc="upper right", ncol=5, fontsize=9, framealpha=0.9)
 
-            for i, (start_idx, cls) in enumerate(state_history):
-                if i + 1 < len(state_history):
-                    end_idx = state_history[i + 1][0]
-                else:
-                    end_idx = state["pred"]
-                width = max(end_idx - start_idx, 1)
+        current_idx = state["pred"]
+        x_start = max(0, current_idx - n)
+        x_end = max(n, current_idx)
+        axes[4].set_xlim(x_start, x_end)
+
+        if timeline_x:
+            for i, (start_idx, cls) in enumerate(zip(timeline_x, timeline_class)):
+                end_idx = timeline_x[i + 1] if i + 1 < len(timeline_x) else current_idx
+                if end_idx > x_start and start_idx < x_end:
+                    width = end_idx - start_idx
+                    axes[4].barh(
+                        0.5, width=width, left=start_idx, height=0.7,
+                        color=color_map.get(cls, "#888888"),
+                    )
+            if current_idx > timeline_x[-1]:
+                cls = timeline_class[-1]
+                width = current_idx - timeline_x[-1]
                 axes[4].barh(
-                    0.5, width=width, left=start_idx, height=0.7,
+                    0.5, width=width, left=timeline_x[-1], height=0.7,
                     color=color_map.get(cls, "#888888"),
                 )
 
-            axes[4].set_xlim(0, max(state["pred"], 30))
-
-            current_cls = state["last_class"]
-            last_change_idx = state_history[-1][0]
-            duration = state["pred"] - last_change_idx
+            cls = state["current_class"]
+            last_change = timeline_x[-1] if timeline_x else 0
+            duration = current_idx - last_change
             axes[4].text(
                 0.01, 0.85,
-                f"Now: {current_cls}  (for {duration}s)",
+                f"Now: {cls}  (for {duration}s)",
                 transform=axes[4].transAxes,
                 ha="left", va="top", fontsize=11, fontweight="bold",
-                color=color_map.get(current_cls, "#333"),
+                color=color_map.get(cls, "#333"),
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#666", alpha=0.95),
             )
 
-        cls = state["last_class"]
+        cls = state["current_class"]
         color = color_map.get(cls, "#333")
         fig.suptitle(
             f"Live inference monitor — {args.label}   |   predicted: {cls}",
