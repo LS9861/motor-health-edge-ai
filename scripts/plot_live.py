@@ -150,19 +150,23 @@ def main() -> None:
     }
 
     (line_mag,) = axes[0].plot([], [], lw=0.9, color="#1f77b4", marker=".")
-    axes[0].set_ylabel("|a| (m/s²)"); axes[0].set_title("Vibration magnitude")
+    axes[0].set_ylabel("|a| (m/s²)");
+    axes[0].set_title("Vibration magnitude")
     axes[0].grid(alpha=0.3)
 
     (line_cur,) = axes[1].plot([], [], lw=0.9, color="#ff7f0e", marker=".")
-    axes[1].set_ylabel("Current (mA)"); axes[1].set_title("Motor current")
+    axes[1].set_ylabel("Current (mA)");
+    axes[1].set_title("Motor current")
     axes[1].grid(alpha=0.3)
 
     (line_vol,) = axes[2].plot([], [], lw=0.9, color="#2ca02c", marker=".")
-    axes[2].set_ylabel("Voltage (V)"); axes[2].set_title("Supply voltage")
+    axes[2].set_ylabel("Voltage (V)"); 
+    axes[2].set_title("Supply voltage")
     axes[2].grid(alpha=0.3)
 
     (line_rpm,) = axes[3].plot([], [], lw=0.9, color="#9467bd", marker=".")
-    axes[3].set_ylabel("RPM"); axes[3].set_title("Motor speed")
+    axes[3].set_ylabel("RPM");
+    axes[3].set_title("Motor speed")
     axes[3].grid(alpha=0.3)
 
     # Subplot 5: state timeline
@@ -245,10 +249,14 @@ def main() -> None:
             # Note: Because `sharex=True`, setting it on axes[0] affects all.
             axes[0].set_xlim(0, max(n - 1, 1))
             
-            axes[0].relim(); axes[0].autoscale_view(scalex=False, scaley=True)
-            axes[1].relim(); axes[1].autoscale_view(scalex=False, scaley=True)
-            axes[2].relim(); axes[2].autoscale_view(scalex=False, scaley=True)
-            axes[3].relim(); axes[3].autoscale_view(scalex=False, scaley=True)
+            axes[0].relim();
+            axes[0].autoscale_view(scalex=False, scaley=True)
+            axes[1].relim();
+            axes[1].autoscale_view(scalex=False, scaley=True)
+            axes[2].relim(); 
+            axes[2].autoscale_view(scalex=False, scaley=True)
+            axes[3].relim();
+            axes[3].autoscale_view(scalex=False, scaley=True)
 
         # Redraw state timeline
         if len(buf_class) > 0:
@@ -300,7 +308,8 @@ def main() -> None:
         print("\n\n🛑 Stopping...")
         try: ser.close()
         except Exception: pass
-        try: fh.flush(); fh.close()
+        try: fh.flush();
+        fh.close()
         except Exception: pass
         print(f"💾 CSV: {out_csv}  ({state['pred']} predictions, {state['raw']} raw)")
         if not args.no_save and (state["pred"] or state["raw"]):
