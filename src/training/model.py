@@ -14,7 +14,7 @@ import torch.nn as nn
 
 
 class MotorCNN1D(nn.Module):
-    def __init__(self, in_channels: int = 6, n_classes: int = 3, dropout: float = 0.5):
+    def __init__(self, in_channels: int = 5, n_classes: int = 3, dropout: float = 0.5):
         super().__init__()
 
         # A small reusable conv block: Conv → BatchNorm → ReLU → MaxPool

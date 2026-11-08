@@ -29,7 +29,7 @@ ONNX_OUT.parent.mkdir(parents=True, exist_ok=True)
 TFLITE_DIR.mkdir(parents=True, exist_ok=True)
 
 CLASSES = ["healthy", "imbalanced", "friction"]
-N_CHANNELS = 5  # ← no voltage
+N_CHANNELS = 5  # ← no voltage, Rpm drop
 
 
 def get_tflite_shape(interp):

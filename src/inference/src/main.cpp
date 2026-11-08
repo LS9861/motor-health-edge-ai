@@ -1,8 +1,15 @@
 // src/inference/src/main.cpp
 //
 // Phase 6 — 5-channel model (no voltage). Vibration + current + RPM only.
-// Motor cycle: 30s ON → 10s OFF → repeat.
 // Model: v3_int8.tflite (5-channel INT8, int8 I/O).
+//
+// Debounce strategy:
+//   - After motor starts (from STANDBY or boot), ignore the first 3 windows
+//     (they contain the motor startup surge — current spike, vibration
+//     transient — which the model misclassifies).
+//   - HEALTHY: 2 consecutive windows to confirm (fast return to safe state).
+//   - FAULT (IMBALANCED/FRICTION): 3 consecutive windows to confirm
+//     (prevents single-window flicker from noise).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -27,7 +34,7 @@
 // ---------- Sampling ----------
 constexpr uint32_t SAMPLE_PERIOD_MS = 20;
 constexpr int WINDOW_SIZE = 50;
-constexpr int N_CHANNELS = 5; // ← 5, no voltage
+constexpr int N_CHANNELS = 5;
 constexpr int HOLES_PER_REV = 330;
 constexpr float WINDOW_MS = (float)(WINDOW_SIZE * SAMPLE_PERIOD_MS);
 
@@ -61,7 +68,7 @@ void IRAM_ATTR onIrPulse()
     pulse_count++;
 }
 
-// ---------- Window buffer: 50 samples x 5 channels ----------
+// ---------- Window buffer ----------
 float window[WINDOW_SIZE][N_CHANNELS];
 int window_idx = 0;
 
@@ -85,15 +92,6 @@ void motorOff()
     motor_is_on = false;
     motor_since = millis();
     Serial.println("# Motor OFF");
-}
-
-void motorCycle()
-{
-    uint32_t elapsed = millis() - motor_since;
-    if (motor_is_on && elapsed >= MOTOR_ON_MS)
-        motorOff();
-    if (!motor_is_on && elapsed >= MOTOR_OFF_MS)
-        motorOn();
 }
 
 // ============================================================================
@@ -199,8 +197,6 @@ void setup()
 // ============================================================================
 void loop()
 {
-    // motorCycle();
-
     uint32_t now = millis();
 
     // ---------- Sample at 50 Hz ----------
@@ -213,11 +209,11 @@ void loop()
         AccelData acc;
         imu.getAccel(&acc);
 
-        window[window_idx][0] = acc.accelX * 9.81f;     // ax
-        window[window_idx][1] = acc.accelY * 9.81f;     // ay
-        window[window_idx][2] = acc.accelZ * 9.81f;     // az
-        window[window_idx][3] = ina228.getCurrent_mA(); // current
-        window[window_idx][4] = 0.0f;                   // rpm — filled later
+        window[window_idx][0] = acc.accelX * 9.81f;
+        window[window_idx][1] = acc.accelY * 9.81f;
+        window[window_idx][2] = acc.accelZ * 9.81f;
+        window[window_idx][3] = ina228.getCurrent_mA();
+        window[window_idx][4] = 0.0f; // rpm filled later
 
         window_idx++;
     }
@@ -225,17 +221,26 @@ void loop()
     if (window_idx < WINDOW_SIZE)
         return;
 
-    // ---------- Fill RPM for all 50 samples ----------
+    // ---------- Compute RPM with voltage compensation ----------
     noInterrupts();
     uint32_t pulses = pulse_count;
     pulse_count = 0;
     interrupts();
-    float rpm = pulses * (60000.0f / WINDOW_MS) / HOLES_PER_REV;
+    float raw_rpm = pulses * (60000.0f / WINDOW_MS) / HOLES_PER_REV;
+
+    float voltage = ina228.getBusVoltage_V();
+    float rpm_scale = 290.0f / 250.0f; // 12V default
+    if (voltage > 13.0f) {
+        rpm_scale = 1.0f;              // 14V
+    } else if (voltage > 12.5f) {
+        rpm_scale = 1.08f;             // 13V
+    }
+    float rpm = raw_rpm * rpm_scale;
 
     for (int t = 0; t < WINDOW_SIZE; t++)
         window[t][4] = rpm;
 
-    // ---------- RAW diagnostic (5 channels) ----------
+    // ---------- RAW diagnostic ----------
     Serial.print("# RAW ax=");
     Serial.print(window[0][0], 3);
     Serial.print(" ay=");
@@ -244,34 +249,40 @@ void loop()
     Serial.print(window[0][2], 3);
     Serial.print(" current=");
     Serial.print(window[0][3], 1);
+    Serial.print(" voltage=");
+    Serial.print(voltage, 2);
     Serial.print(" rpm=");
-    Serial.println(window[0][4], 0);
+    Serial.println(rpm, 0);
 
-    // ---------- STANDBY gate: skip inference if motor is off ----------
-    // Fast-off detection: RPM < 10 AND current < 50 mA for even 1 window
-    // triggers STANDBY immediately (motor is mechanical, no glitches expected).
-    static int on_count = 0; // counts consecutive running windows
+    // ---------- STANDBY gate + startup grace period ----------
+    // State machine:
+    //   MOTOR_OFF (rpm~0, current~0)  -> STANDBY after 2 windows
+    //   MOTOR_ON                      -> WAITING for first 3 windows (startup surge)
+    //   MOTOR_RUNNING                 -> run inference, apply debouncer
+    static int standby_count = 0;
+    static int on_count = 0;
     const bool motor_off = (rpm < 10.0f) && (window[0][3] < 50.0f);
-    if (motor_off)
-    {
+
+    if (motor_off) {
+        standby_count++;
         on_count = 0;
-        Serial.printf("%lu,STANDBY,0,0,0,%.0f\n", now, rpm);
-        window_idx = 0;
-        return;
-    }
-    else
-    {
+        if (standby_count >= 2) {
+            Serial.printf("%lu,STANDBY,0,0,0,%.0f\n", now, rpm);
+            window_idx = 0;
+            return;
+        }
+    } else {
+        standby_count = 0;
         on_count++;
-        // Warm-up: require 2 consecutive running windows before resuming inference
-        if (on_count < 2)
-        {
+        // Ignore first 3 windows after start — startup surge misclassifies
+        if (on_count <= 30) {
             Serial.printf("%lu,WAITING,0,0,0,%.0f\n", now, rpm);
             window_idx = 0;
             return;
         }
     }
 
-    // ---------- Normalize, then quantize to int8 ----------
+    // ---------- Normalize + quantize to int8 ----------
     int8_t *input_i8 = (int8_t *)input_tensor->data.int8;
     const float in_scale = input_tensor->params.scale;
     const int32_t in_zero = input_tensor->params.zero_point;
@@ -281,10 +292,8 @@ void loop()
         {
             float norm = (window[t][c] - NORM_MEAN[c]) / NORM_STD[c];
             int32_t q = (int32_t)roundf(norm / in_scale) + in_zero;
-            if (q < -128)
-                q = -128;
-            if (q > 127)
-                q = 127;
+            if (q < -128) q = -128;
+            if (q > 127)  q = 127;
             input_i8[c * WINDOW_SIZE + t] = (int8_t)q;
         }
     }
@@ -300,7 +309,7 @@ void loop()
     uint32_t t_infer_end_us = micros();
     Serial.printf("# INVOKE_US,%lu\n", t_infer_end_us - t_infer_start_us);
 
-    // ---------- Read int8 output, dequantize to float ----------
+    // ---------- Read int8 output ----------
     int8_t *output_i8 = (int8_t *)output_tensor->data.int8;
     const float out_scale = output_tensor->params.scale;
     const int32_t out_zero = output_tensor->params.zero_point;
@@ -316,35 +325,28 @@ void loop()
         if (logits[i] > logits[best])
             best = i;
 
-    // ---- State-machine debouncing: require 3 consecutive same-class windows ----
-    static int prediction_buffer[3] = {-1, -1, -1};
-    static int buffer_idx = 0;
-    static int confirmed_class = -1; // -1 = not yet confirmed
-    static bool buffer_filled = false;
+    // ---- Debouncer: healthy needs 2, faults need 3 ----
+    static int confirmed_class = -1;
+    static int streak_count = 0;
+    static int last_pred = -1;
 
-    prediction_buffer[buffer_idx] = best;
-    buffer_idx = (buffer_idx + 1) % 3;
-    if (buffer_idx == 0)
-        buffer_filled = true;
-
-    int new_confirmed = -1;
-    if (buffer_filled &&
-        prediction_buffer[0] == prediction_buffer[1] &&
-        prediction_buffer[1] == prediction_buffer[2])
-    {
-        new_confirmed = prediction_buffer[0];
+    if (best == last_pred) {
+        if (streak_count < 3) streak_count++;
+    } else {
+        streak_count = 1;
+        last_pred = best;
     }
 
-    if (new_confirmed != -1 && new_confirmed != confirmed_class)
-    {
-        confirmed_class = new_confirmed;
+    int required_streak = (best == 0) ? 2 : 3;
+
+    if (streak_count >= required_streak && confirmed_class != best) {
+        confirmed_class = best;
         Serial.print("# STATE CHANGE -> ");
         Serial.println(labels[confirmed_class]);
     }
 
     if (confirmed_class == -1)
     {
-        // Not yet confirmed — wait for 3 consistent windows
         Serial.printf("%lu,WAITING,%.2f,%.2f,%.2f,%.0f\n",
                       now, logits[0], logits[1], logits[2], rpm);
     }
