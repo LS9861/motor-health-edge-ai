@@ -42,7 +42,10 @@ This project collects vibration, current, and speed signals from a TT DC gear mo
 | Model size (INT8) | 5.6 KB |
 | Parameters | 963 |
 | RAM (tensor arena) | 32 KB |
-| Inference time on ESP32-C3 | *(measure and fill in)* |
+| Inference time on ESP32-C3 | **27.9 ms (median, n=104)** |
+*Measured on ESP32-C3 @ 160 MHz with INT8 TFLite Micro, 50×5 input window,
+serial I/O active. Median of 104 consecutive inferences during steady-state
+healthy motor operation; variance <50 µs. See `docs/phase12_inference_time.md`.*
 
 ### Confusion matrix (5-channel model, test set)
 Predicted
