@@ -1,0 +1,25 @@
+# Phase 12: MQTT + Node-RED Dashboard
+
+## Architecture
+- **ESP32-C3:** Runs TensorFlow Micro inference, publishes JSON to `motor/health/state`.
+- **Mosquitto:** MQTT Broker running in Docker (`docker-compose up -d`).
+- **Node-RED:** Dashboard running via `npx -y node-red`.
+- **UI Access:** `http://192.168.178.123:1880/ui`
+
+## Hardware Interlocks
+- **GPIO 8 (Manual Switch):** Toggle to GND. Takes absolute priority. Overrides software and disables Node-RED buttons.
+- **GPIO 9 (E-Stop):** Toggle to GND. Instantly kills the motor. Clears when toggled OFF and current is normal.
+
+## Safety Features
+- **I²t Thermal Protection:** Monitors current. If current stays above 200mA for too long, it calculates a thermal limit (4,000,000). If the motor is jammed, it cuts power in ~3.3 seconds to prevent L298N burnout.
+- **Startup Grace Period:** Ignores the first 1.5 seconds of high current (inrush) to prevent false E-Stop trips.
+
+## Startup Cheat Sheet
+1. Start Broker: `cd mqtt && docker compose up -d`
+2. Start Node-RED: `npx -y node-red`
+3. Open Dashboard: `http://localhost:1880/ui` (or your PC's LAN IP for mobile).
+
+## Future Work (Phase 13)
+- Add a standalone web server directly on the ESP32 (Method B) for offline local control.
+- Connect Node-RED to InfluxDB for long-term data logging.
+- Add Telegram/Email alerts for FRICTION/IMBALANCED states.

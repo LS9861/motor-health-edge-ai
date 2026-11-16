@@ -52,6 +52,12 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
+      # --- secret fake data ---
+      - name: Create dummy secrets.h for CI
+        working-directory: src/inference/src
+        run: cp secrets_example.h secrets.h
+      # -------------------------------------
+
       - name: Build ESP32-C3 firmware
         working-directory: src/inference
         run: pio run
