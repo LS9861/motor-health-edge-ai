@@ -206,4 +206,4 @@ models/tflite/*_TT.tflite
 secrets.h
 
 %% ignore disable or backup file
-cpp.Disabled, .bak
+*.Disabled, *.bak

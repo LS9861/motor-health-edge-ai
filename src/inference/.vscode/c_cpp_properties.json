@@ -10,6 +10,8 @@
             "includePath": [
                 "F:/All_AboutProject/motor-health-edge-ai/src/inference/include",
                 "F:/All_AboutProject/motor-health-edge-ai/src/inference/src",
+                "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
+                "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/PubSubClient/src",
                 "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/Tensorflow Lite for Microcontrollers _WCL_/src",
                 "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/FastIMU/src",
                 "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/Adafruit INA228 Library",
@@ -241,7 +243,6 @@
                 "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
                 "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                 "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
-                "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                 "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                 ""
@@ -251,6 +252,8 @@
                 "path": [
                     "F:/All_AboutProject/motor-health-edge-ai/src/inference/include",
                     "F:/All_AboutProject/motor-health-edge-ai/src/inference/src",
+                    "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
+                    "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/PubSubClient/src",
                     "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/Tensorflow Lite for Microcontrollers _WCL_/src",
                     "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/FastIMU/src",
                     "F:/All_AboutProject/motor-health-edge-ai/src/inference/.pio/libdeps/esp32-c3-devkitm-1/Adafruit INA228 Library",
@@ -482,7 +485,6 @@
                     "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
                     "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                     "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
-                    "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                     "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "C:/Users/Samba_Loks/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                     ""

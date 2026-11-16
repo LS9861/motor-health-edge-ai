@@ -133,7 +133,7 @@ def main() -> None:
     input("\n   Press Enter to START 20-second capture... ")
 
     # Capture loop — write header + 1000 rows
-    header = ["timestamp_ms", "ax", "ay", "az", "current_mA", "rpm"]
+    header = ["timestamp_ms", "ax", "ay", "az", "current_mA", "rpm", "label"]
     rows_written = 0
     start_mono = time.monotonic()
 
@@ -166,7 +166,7 @@ def main() -> None:
                 float(parts[1])
             except ValueError:
                 continue
-            writer.writerow(parts)
+            writer.writerow(parts + [args.label])
             rows_written += 1
             if rows_written % 100 == 0:
                 elapsed = time.monotonic() - start_mono

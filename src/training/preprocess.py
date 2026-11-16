@@ -43,7 +43,7 @@ LABEL_MAP = {label: idx for idx, label in enumerate(LABELS)}
 
 # Fixed test set — 13V captures (unseen midpoint voltage)
 TEST_FILES = {
-    "healthy": "healthy_7.csv",       # 13V
+    "healthy": "healthy_9.csv",       # 13V
     "imbalanced": "imbalanced_9.csv", # 13V
     "friction": "friction_9.csv",     # 13V
 }
