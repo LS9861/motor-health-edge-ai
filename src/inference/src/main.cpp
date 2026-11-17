@@ -72,7 +72,7 @@ PubSubClient mqttClient(espClient);
 // i^2t currnet controller
 float thermalEnergy = 0.0f;          // Accumulated I²t value
 const float I2T_TRIP_LIMIT = 4000000;  // Tune this threshold
-const float I_RATED_MA = 200.0f;     // Normal running current (e.g., 200mA)
+const float I_RATED_MA = 300.0f;     // Normal running current (e.g., 200mA)
 const float I2T_COOLING = 0.95f;     // How fast it "cools" when stopped
 
 // ---------- IR pulse counter (200us debounce) ----------
