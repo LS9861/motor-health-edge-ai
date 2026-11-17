@@ -21,6 +21,9 @@ This project collects vibration, current, and speed signals from a TT DC gear mo
 | TT DC gear motor | Target motor |
 | L298N | Motor driver |
 
+<img width="10931" height="9147" alt="circuitdiagram-motorhealthedgeai" src="https://github.com/user-attachments/assets/3d9b2e02-ba5a-4aad-86af-6c4a2d9d1836" />
+
+
 ### Wiring Summary
 
 - **MPU6050:** SDA → GPIO0, SCL → GPIO1, VCC → 3.3V
