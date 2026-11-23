@@ -1,4 +1,18 @@
-# Phase 10 — JGA25-370 Data Collection
+# Phase 10 — JGA25-370 Rebuild & Data Collection
+
+## What changed vs the TT motor
+
+The project originally used a small **TT DC gear motor** with a separate LM393
+reflective sensor on a 20-hole disk (see [`phase1_bringup.md`](phase1_bringup.md),
+archived). Phase 10 rebuilt the rig around a **JGA25-370 geared motor**:
+
+- **Motor:** JGA25-370 with a **built-in magnetic encoder** (replaces the TT motor
+  + external reflective disk). The encoder pulse train feeds GPIO10.
+- **Mount:** the MPU6050 was re-mounted on the new gearbox — this mount change is
+  the root cause of the TT→JGA25 transfer failure documented in
+  [`phase11_retrain.md`](phase11_retrain.md).
+- **Supply:** **12–14 V** for all real captures. The earlier ~6 V was only a
+  bench sanity-check, never training data.
 
 ## How to reproduce the training data
 
@@ -6,7 +20,7 @@ Raw CSVs are **not** committed (see `.gitignore`). To regenerate:
 
 1. Flash `src/inference/src/collect_raw.cpp` (rename `main.cpp` → `main.cpp.disabled` first)
 2. Open `data/raw/jga25/` — create if missing
-3. For each of the 9 captures, follow this protocol:
+3. For each of the 9 captures, follow this protocol (run the motor at **12–14 V**):
 
 | File | Fault setup |
 |---|---|

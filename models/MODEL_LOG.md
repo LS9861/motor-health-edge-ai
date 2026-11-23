@@ -1,12 +1,16 @@
 # Model version log
 
+> 🔁 **Two hardware eras.** Entries **v1–v3 below are the TT-motor era** and are
+> kept for history. The **deployed model is `v3_5ch_flat_jga25`** (JGA25-370,
+> built-in magnetic encoder) — see the two JGA25 sections at the bottom.
+
 Tracks every trained model, its input features, test metrics, and the
 reasoning behind the version. Update this file before pushing any new
 checkpoint to `models/checkpoints/`.
 
 ---
 
-## v1 — 5-channel baseline (Phase 3, DONE)
+## v1 — 5-channel baseline (Phase 3, DONE — TT era)
 
 - **Input**: 5 channels × 100 timesteps = (100, 5)
   - ax, ay, az (m/s²), current_mA (mA), voltage_v (V)
@@ -82,3 +86,33 @@ checkpoint to `models/checkpoints/`.
   - Optional: capture pulse timestamps for even higher resolution
 - **Requires**: full dataset recapture (9 files, ~30 min)
 - **Also requires**: archive current dataset
+
+---
+
+## v3_5ch_flat_TT — 5-channel, TT-trained (archived baseline)
+
+- **Input**: (50, 5) — ax, ay, az, current_mA, rpm (RPM as 5th channel)
+- **Dataset**: TT-motor CSVs (9 files, 50 Hz)
+- **Checkpoint**: `models/checkpoints/v3_5ch_flat_TT.pt`
+- **TT test accuracy**: **96.59%**
+- **On JGA25 data**: **30.77%** (36/117) — healthy↔imbalanced collapse
+- Kept to quantify the cross-hardware drop documented in
+  [`docs/phase11_retrain.md`](../docs/phase11_retrain.md).
+
+---
+
+## v3_5ch_flat_jga25 — 5-channel, JGA25-370 (DEPLOYED)
+
+- **Input**: (50, 5) — ax, ay, az, current_mA, rpm (RPM as 5th channel)
+- **Dataset**: `data/raw/jga25/` (9 files @ 12–14 V), augmented ±5–15% vibration
+- **Architecture**: 1D-CNN, flat 5-ch input, 963 params
+- **Training**: Adam lr=1e-3, wd=1e-3, early stopping (patience=15)
+- **Checkpoint**: `models/checkpoints/v3_5ch_flat_jga25.pt`
+- **Metrics** (`results/reports/v3_metrics.json`):
+  - Accuracy: **100%** (117/117), n_train=2808, n_test=117
+  - Confusion matrix: diag(39, 39, 39)
+- **Quantization**: INT8 lossless (100% → 100%)
+- **Deployment**: `src/inference/src/main.cpp`, 27.9 ms inference
+- **Caveat**: test window is same-session as training; true generalization is
+  the Phase 14 target (see [`docs/phase11_retrain.md`](../docs/phase11_retrain.md)).
+- **Decision**: PROMOTED — this is the shipped model.

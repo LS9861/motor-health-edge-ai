@@ -1,4 +1,15 @@
-# Phase 1 — Hardware Bring-up Log
+# Phase 1 — Hardware Bring-up Log (TT motor — ARCHIVED)
+
+> ⚠️ **ARCHIVED / TT-MOTOR ERA.** This log documents the original bring-up on a
+> **TT DC gear motor** at ~6 V (bench). It is kept because the lessons (ADC
+> saturation, MPU clone, encoder chatter, shortcut learning) shaped the final
+> design. The **current** hardware is a **JGA25-370 with a built-in magnetic
+> encoder at 12–14 V** — see [`phase10_jga25.md`](phase10_jga25.md) and
+> [`wiring.md`](wiring.md).
+>
+> Note: the final pipeline uses **50-sample windows** (not 100) and the
+> **ACS712 / voltage-divider** hardware described below was **retired** in favour
+> of the INA228. The TT motor was later replaced by the magnetic-encoder JGA25-370.
 
 Project: motor-health-edge-ai
 Hardware: ESP32-C3 SuperMini, MPU6500 (GY-521), INA228, LM393 + 20-hole disk, TT DC gearmotor, L298N

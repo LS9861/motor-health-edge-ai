@@ -1,9 +1,14 @@
-# Wiring — ESP32-C3 SuperMini
+# Wiring — ESP32-C3 SuperMini + JGA25-370
 
 > ESP32-C3 GPIOs are **3.3 V only** and its ADC saturates at ~3.3 V.
 > Never feed 5 V sensor outputs into a GPIO.
 
-## 1. MPU6050 — I2C
+> 🔁 This reflects the **current JGA25-370 build**. The original design used an
+> ACS712 + resistor divider on the motor supply; that was retired in favour of
+> the INA228 (see [`phase1_bringup.md`](phase1_bringup.md), archived).
+> **Do not build the ACS712 version.**
+
+## 1. MPU6050 — I2C (vibration)
 
 | MPU6050 | ESP32-C3 | Note |
 |---|---|---|
@@ -12,56 +17,60 @@
 | SDA | GPIO0 | onboard pull-ups OK; add 4.7k if bare chip |
 | SCL | GPIO1 | same |
 
-## 2. ACS712 current sensor
+## 2. INA228 — current (and bus voltage, measured-but-unused)
 
-**Preferred:** power ACS712 from **3.3 V**, output sits near 1.65 V at 0 A and stays inside the ADC range.
-**If you must use 5 V:** add a 1:1 resistor divider (e.g. 10k/10k) on OUT before the ADC pin.
-
-| ACS712 | ESP32-C3 |
+| INA228 | ESP32-C3 / supply |
 |---|---|
-| VCC | 3V3 (see above) |
+| VIN (logic) | 3V3 |
 | GND | GND |
-| OUT | GPIO2 (ADC1_CH2) |
-| IP+ / IP- | in series with motor supply (high side) |
+| SDA / SCL | GPIO0 / GPIO1 (shared I2C) |
+| VIN+ | supply + (12–14 V) |
+| VIN− | L298N +12V |
+| VBUS | VIN+ (jumper closed) — voltage is measured but **not** a model input |
 
-## 3. Voltage divider (motor supply)
+High-side measurement through the on-board 15 mΩ shunt. I2C address 0x40.
 
-R1 = 100 kΩ from V+ to midpoint, R2 = 22 kΩ from midpoint to GND.
-Vout = V+ · R2/(R1+R2) → 12 V supply ≈ 2.16 V at GPIO3. Safe.
+## 3. JGA25-370 built-in magnetic encoder — speed
 
-## 4. IR speed sensor
-
-| Module | ESP32-C3 |
+| Signal | ESP32-C3 |
 |---|---|
-| VCC | 3V3 |
-| GND | GND |
-| OUT | GPIO10 (interrupt, FALLING) |
+| Encoder VCC | 3V3 (check motor datasheet) |
+| Encoder GND | GND |
+| Encoder OUT (channel A) | GPIO10 (interrupt, FALLING) |
 
-One reflective marker on the shaft → one pulse/rev → RPM as computed in firmware.
+The magnetic encoder emits a pulse train as the shaft turns; RPM is computed in
+firmware by counting pulses over a fixed window and dividing by pulses-per-rev.
+**Confirm the pulses-per-rev constant (`HOLES_PER_REV` in `main.cpp`) against the
+motor datasheet** — it must match the encoder you actually have or RPM will be
+off by that ratio.
 
-## 5. L298N motor driver
+## 4. L298N motor driver
 
 | L298N | ESP32-C3 / supply |
 |---|---|
 | VCC (logic) | 3V3 |
 | GND | **common with ESP32 GND** |
-| IN1 | GPIO4 |
-| IN2 | GPIO5 |
+| IN1 / IN2 | GPIO4 / GPIO5 |
 | ENA | jumper ON (full speed) |
-| +12V | motor battery + |
-| GND (power) | motor battery − / common GND |
+| +12V | motor supply + (12–14 V, via INA228) |
+| GND (power) | supply − / common GND |
 
-## 6. ACS712 zero calibration (do this once)
+## 5. Safety inputs
 
-1. Wire everything. **Do not power the motor.**
+| Signal | ESP32-C3 | Behaviour |
+|---|---|---|
+| E-Stop button | GPIO9 (INPUT_PULLUP, to GND) | Latching stop; also tripped by I²t overcurrent |
+| Mode switch | GPIO8 (INPUT_PULLUP, to GND) | Manual lockout vs software (MQTT) control |
+
+## 6. INA228 sanity check
+
+1. Wire everything, motor off.
 2. Flash firmware, open Serial Monitor @ 115200.
-3. Read `current_a` — with no load it must be ≈ 0.000.
-   If not, adjust `ACS712_ZERO_V` in `src/inference/src/main.cpp`
-   (and `configs/sensors.yaml`) until it does.
+3. `current_mA` ≈ 0 with no load; `voltage_v` should read your 12–14 V rail.
 
 ## 7. Motor safety
 
-- Don't stall the motor. For "friction", press cardboard **lightly** — the motor must still turn.
+- Don't stall the motor. For "friction", press **lightly** — the motor must still turn.
 - L298N gets hot; ventilate or heatsink.
 - 30–60 s per capture, then rest.
 - Separate motor supply preferred; **common GND is mandatory**.
