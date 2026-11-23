@@ -188,6 +188,14 @@ jobs:
             echo "Marking $TAG as STABLE release"
           fi
 
+      - name: Render release notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          # RELEASE_NOTES.md is the single source of truth for the release body.
+          sed "s/{VERSION}/${TAG}/g" RELEASE_NOTES.md > /tmp/release_body.md
+          echo "----- rendered release body -----"
+          cat /tmp/release_body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -198,29 +206,4 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ steps.pre.outputs.is_prerelease }}
           name: Release ${{ github.ref_name }}
-          body: |
-            ## motor-health-edge-ai ${{ github.ref_name }}
-
-            Motor health classifier for the ESP32-C3, using a 5-channel 1D-CNN
-            (vibration + current + RPM) quantised to INT8 TFLite and deployed via
-            TensorFlow Lite Micro.
-
-            ### Artifacts
-            - **merged_firmware-*.bin** — **flash this** (bootloader + partitions + app, flash at 0x0)
-            - **model_data-*.h** — C header for rebuilding from source
-            - **v3_int8-*.tflite** — quantised model for external use
-
-            ### What's included
-            - 5-channel INT8 model (96.59% test accuracy, lossless quantisation)
-            - Voltage removed from the feature set after a shortcut-learning
-              diagnosis — see `docs/phase6_deployment.md`
-            - TFLM firmware verified on real hardware
-
-            ### Flashing instructions
-
-            ```bash
-            # 1. Erase (recommended when switching firmware)
-            python -m esptool --chip esp32c3 --port COM6 erase-flash
-
-            # 2. Flash the merged binary at 0x0
-            python -m esptool --chip esp32c3 --port COM6 -b 460800 write-flash 0x0 merged_firmware-${{ github.ref_name }}.bin
+          body_path: /tmp/release_body.md
