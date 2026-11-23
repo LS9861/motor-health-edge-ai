@@ -25,7 +25,7 @@ This project collects vibration, current, and speed signals from a **JGA25-370 g
 
 > ℹ️ **Supply voltage.** Early bench bring-up used ~6 V only to sanity-check sensors. All **real data was captured, trained, and tested at 12–14 V**, with the firmware normalizing RPM across that range. Reproduce the fault datasets at 12–14 V.
 
-<img width="10931" height="9147" alt="circuitdiagram-motorhealthedgeai" src="circuitdiagram-motorhealthedgeai.png" />
+<img width="10931" height="9147" alt="circuitdiagram-motorhealthedgeai" src="https://github.com/user-attachments/assets/b2d9af9d-9461-4a59-8785-8c72f5ff9357" />
 
 <!-- Portfolio: TT-motor and JGA25-370 photos belong here (kept for the build narrative). -->
 
