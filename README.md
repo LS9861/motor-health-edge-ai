@@ -216,3 +216,10 @@ cd src/inference && pio run -t upload
 - [`docs/phase12_mqtt_dashboard.md`](docs/phase12_mqtt_dashboard.md) — MQTT telemetry + Node-RED dashboard
 - [`docs/wiring.md`](docs/wiring.md) — current JGA25-370 wiring
 - [`docs/visualization.md`](docs/visualization.md) — live inference monitor
+
+### Guides
+
+- [`ML_info/`](ML_info/) — two companion documents:
+  - [`ML_Guide_for_Motor_Health.pdf`](ML_info/ML_Guide_for_Motor_Health.pdf) — 10-page technical walkthrough of this build (architecture choice, quantisation, the leakage case study)
+  - [`ML_Primer_for_Beginners.pdf`](ML_info/ML_Primer_for_Beginners.pdf) — 19-page illustrated ML primer taught from zero, using this project as the running example
+
